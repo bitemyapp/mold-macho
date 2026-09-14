@@ -26,6 +26,29 @@ pub struct PlatformVersion {
     pub minos: u32,
 }
 
+impl PlatformVersion {
+    fn read(cmd: u32, data: &[u8], cputype: u32) -> Self {
+        if cmd == LC_BUILD_VERSION {
+            let cmd = BuildVersionCommand::read_from(data);
+            return Self { platform: cmd.platform, minos: cmd.minos };
+        }
+        // Legacy Intel mobile objects target the simulator. Arm64
+        // simulators always use LC_BUILD_VERSION.
+        let simulator = cputype == CPU_TYPE_X86_64;
+        let platform = match cmd {
+            LC_VERSION_MIN_MACOSX => PLATFORM_MACOS,
+            LC_VERSION_MIN_IPHONEOS if simulator => PLATFORM_IOSSIMULATOR,
+            LC_VERSION_MIN_IPHONEOS => PLATFORM_IOS,
+            LC_VERSION_MIN_TVOS if simulator => PLATFORM_TVOSSIMULATOR,
+            LC_VERSION_MIN_TVOS => PLATFORM_TVOS,
+            LC_VERSION_MIN_WATCHOS if simulator => PLATFORM_WATCHOSSIMULATOR,
+            LC_VERSION_MIN_WATCHOS => PLATFORM_WATCHOS,
+            _ => unreachable!(),
+        };
+        Self { platform, minos: VersionMinCommand::read_from(data).version }
+    }
+}
+
 #[derive(Debug)]
 pub struct ObjectFile {
     pub mf: &'static MappedFile,
@@ -353,33 +376,9 @@ pub fn stage_object<E: Arch>(
             }
             LC_SYMTAB => symtab_cmd = Some(SymtabCommand::read_from(&data[off..])),
             LC_DYSYMTAB => dysymtab_cmd = Some(DysymtabCommand::read_from(&data[off..])),
-            LC_BUILD_VERSION => {
-                let cmd = BuildVersionCommand::read_from(&data[off..]);
-                platform_versions.push(PlatformVersion {
-                    platform: cmd.platform,
-                    minos: cmd.minos,
-                });
-            }
-            LC_VERSION_MIN_MACOSX | LC_VERSION_MIN_IPHONEOS | LC_VERSION_MIN_TVOS
-            | LC_VERSION_MIN_WATCHOS => {
-                let cmd = VersionMinCommand::read_from(&data[off..]);
-                // Legacy commands distinguish device and simulator
-                // builds by CPU type; arm64 simulators use LC_BUILD_VERSION.
-                let simulator = E::CPUTYPE == CPU_TYPE_X86_64;
-                let platform = match lc.cmd {
-                    LC_VERSION_MIN_MACOSX => PLATFORM_MACOS,
-                    LC_VERSION_MIN_IPHONEOS if simulator => PLATFORM_IOSSIMULATOR,
-                    LC_VERSION_MIN_IPHONEOS => PLATFORM_IOS,
-                    LC_VERSION_MIN_TVOS if simulator => PLATFORM_TVOSSIMULATOR,
-                    LC_VERSION_MIN_TVOS => PLATFORM_TVOS,
-                    LC_VERSION_MIN_WATCHOS if simulator => PLATFORM_WATCHOSSIMULATOR,
-                    LC_VERSION_MIN_WATCHOS => PLATFORM_WATCHOS,
-                    _ => unreachable!(),
-                };
-                platform_versions.push(PlatformVersion {
-                    platform,
-                    minos: cmd.version,
-                });
+            LC_BUILD_VERSION | LC_VERSION_MIN_MACOSX | LC_VERSION_MIN_IPHONEOS
+            | LC_VERSION_MIN_TVOS | LC_VERSION_MIN_WATCHOS => {
+                platform_versions.push(PlatformVersion::read(lc.cmd, &data[off..], E::CPUTYPE));
             }
             LC_LINKER_OPTION => {
                 // Auto-link requests: the object names libraries it
@@ -1831,6 +1830,7 @@ fn load_reexports<E: Arch>(
                     ctx.dylibs[idx].is_implicit = true;
                     continue;
                 }
+                check_dylib_versions(ctx, dep);
                 let (dep_exports, dep_tlvs, dep_reexports, dep_rpaths) =
                     dylib_binary_exports(dep);
                 exports.extend(dep_exports);
@@ -1846,6 +1846,7 @@ fn load_reexports<E: Arch>(
                     ctx.dylibs[idx].is_implicit = true;
                     continue;
                 }
+                check_dylib_versions(ctx, slice);
                 let (dep_exports, dep_tlvs, dep_reexports, dep_rpaths) =
                     dylib_binary_exports(slice);
                 exports.extend(dep_exports);
@@ -1859,7 +1860,32 @@ fn load_reexports<E: Arch>(
     }
 }
 
+/// Check binary dependencies, including private reexports whose symbols
+/// are merged into their parent's export set instead of a DylibFile.
+fn check_dylib_versions<E: Arch>(ctx: &Context<E>, mf: &MappedFile) {
+    let hdr = MachHeader::read_from(mf.data);
+    let mut versions = Vec::new();
+    let mut off = size_of::<MachHeader>();
+    for _ in 0..hdr.ncmds {
+        let data = &mf.data[off..];
+        let lc = LoadCommand::read_from(data);
+        if matches!(lc.cmd, LC_BUILD_VERSION | LC_VERSION_MIN_MACOSX
+            | LC_VERSION_MIN_IPHONEOS | LC_VERSION_MIN_TVOS | LC_VERSION_MIN_WATCHOS)
+        {
+            versions.push(PlatformVersion::read(lc.cmd, data, hdr.cputype));
+        }
+        off += lc.cmdsize as usize;
+    }
+    if let Some(first) = versions.first() {
+        if !versions.iter().any(|v| v.platform == ctx.args.platform) {
+            fatal!("building for '{}', but linking in dylib ({}) built for '{}'",
+                platform_name(ctx.args.platform), mf.name, platform_name(first.platform));
+        }
+    }
+}
+
 pub fn parse_dylib_binary<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
+    check_dylib_versions(ctx, mf);
     let data = mf.data;
     let hdr = MachHeader::read_from(data);
 
