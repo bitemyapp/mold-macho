@@ -31,6 +31,7 @@ pub enum InputArg {
     /// exports this dylib re-exports as its own.
     ReexportLib(String),
     ReexportFile(String),
+    ReexportFramework(String),
     /// `-hidden-lfoo`: an archive whose external symbols are demoted
     /// to private externals.
     HiddenLib(String),
@@ -447,6 +448,9 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             "-weak_framework" => args
                 .inputs
                 .push(InputArg::Framework(next_arg(&mut i).to_string(), true)),
+            "-reexport_framework" => args
+                .inputs
+                .push(InputArg::ReexportFramework(next_arg(&mut i).to_string())),
             "-needed_framework" => args
                 .inputs
                 .push(InputArg::NeededFramework(next_arg(&mut i).to_string())),

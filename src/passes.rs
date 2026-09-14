@@ -335,7 +335,8 @@ pub fn read_input_files<E: Arch>(ctx: &mut Context<E>) {
                         consider(&path, &mut stubs);
                     }
                 }
-                InputArg::Framework(name, _) | InputArg::NeededFramework(name) => {
+                InputArg::Framework(name, _) | InputArg::NeededFramework(name)
+                | InputArg::ReexportFramework(name) => {
                     if let Some(path) = find_framework(ctx, name) {
                         consider(&path, &mut stubs);
                     }
@@ -397,6 +398,13 @@ pub fn read_input_files<E: Arch>(ctx: &mut Context<E>) {
                     collect_file(ctx, mf, false, false, false, true, &mut queue);
                 }
                 None => error!("library not found: -hidden-l{name}"),
+            },
+            InputArg::ReexportFramework(name) => match find_framework(ctx, name) {
+                Some(path) => {
+                    let mf = MappedFile::must_open(&path);
+                    collect_file(ctx, mf, false, false, true, false, &mut queue);
+                }
+                None => error!("framework not found: {name}"),
             },
             InputArg::NeededLib(name) => match find_library(ctx, name) {
                 Some(path) => {
