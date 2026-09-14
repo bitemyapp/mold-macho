@@ -140,6 +140,7 @@ pub struct Args {
     pub uuid: bool,
     /// -w: suppress warnings.
     pub suppress_warnings: bool,
+    pub fatal_warnings: bool,
     /// -undefined dynamic_lookup: leave unresolved symbols to be looked
     /// up in any loaded image at run time.
     pub undefined_dynamic_lookup: bool,
@@ -280,6 +281,7 @@ impl Default for Args {
             objc_category_merging: None,
             uuid: true,
             suppress_warnings: false,
+            fatal_warnings: false,
             undefined_dynamic_lookup: false,
             undefined_warning: false,
             undefined_is_warning: false,
@@ -524,6 +526,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
                 .allowed_undefined
                 .push(next_arg(&mut i).to_string()),
             "-w" => args.suppress_warnings = true,
+            "-fatal_warnings" => args.fatal_warnings = true,
             "-help" => {
                 println!("Usage: ld64.mold [options] file...");
                 crate::error::exit_after_cleanup(0);
