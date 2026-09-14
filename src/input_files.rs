@@ -1877,7 +1877,15 @@ fn check_dylib_versions<E: Arch>(ctx: &Context<E>, mf: &MappedFile) {
         off += lc.cmdsize as usize;
     }
     if let Some(first) = versions.first() {
-        if !versions.iter().any(|v| v.platform == ctx.args.platform) {
+        if let Some(version) = versions.iter().find(|v| v.platform == ctx.args.platform) {
+            if ctx.args.platform_minos != 0 && version.minos > ctx.args.platform_minos {
+                crate::warn!(
+                    "building for {}-{}, but linking with dylib '{}' which was built for newer version {}",
+                    platform_name(ctx.args.platform), format_version(ctx.args.platform_minos),
+                    mf.name, format_version(version.minos)
+                );
+            }
+        } else {
             fatal!("building for '{}', but linking in dylib ({}) built for '{}'",
                 platform_name(ctx.args.platform), mf.name, platform_name(first.platform));
         }
