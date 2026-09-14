@@ -1157,17 +1157,33 @@ pub fn convert_init_offsets<E: Arch>(ctx: &mut Context<E>) {
     }
 }
 
-/// Validates the platforms of objects selected by resolution, including
-/// the LTO output. Unused archive members must not cause errors.
-pub fn check_input_platforms<E: Arch>(ctx: &Context<E>) {
+/// Validates only objects selected by resolution, including the LTO
+/// output. Unused archive members must not cause errors or warnings.
+pub fn check_input_versions<E: Arch>(ctx: &Context<E>) {
     for obj in ctx.objs.iter().filter(|obj| obj.is_alive) {
         // Old objects and the synthesized object may have no version
-        // command. An object may also declare more than one platform.
-        let Some(&first) = obj.platforms.first() else { continue };
-        if !obj.platforms.contains(&ctx.args.platform) {
+        // command. An object may also declare more than one platform;
+        // use the deployment target for the platform being linked.
+        let Some(first) = obj.platform_versions.first() else { continue };
+        let Some(version) = obj
+            .platform_versions
+            .iter()
+            .find(|v| v.platform == ctx.args.platform)
+        else {
             crate::error!(
                 "building for '{}', but linking in object file ({}) built for '{}'",
-                platform_name(ctx.args.platform), obj.mf.name, platform_name(first)
+                platform_name(ctx.args.platform), obj.mf.name, platform_name(first.platform)
+            );
+            continue;
+        };
+
+        // Zero means no deployment target was specified. The SDK
+        // version used to compile an input does not constrain its use.
+        if ctx.args.platform_minos != 0 && version.minos > ctx.args.platform_minos {
+            crate::warn!(
+                "object file ({}) was built for newer '{}' version ({}) than being linked ({})",
+                obj.mf.name, platform_name(version.platform), format_version(version.minos),
+                format_version(ctx.args.platform_minos)
             );
         }
     }

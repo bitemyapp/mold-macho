@@ -237,6 +237,17 @@ unsafe impl FileRecord for BuildVersionCommand {}
 
 #[derive(Clone, Copy, Default, Debug)]
 #[repr(C)]
+pub struct VersionMinCommand {
+    pub cmd: u32,
+    pub cmdsize: u32,
+    pub version: u32,
+    pub sdk: u32,
+}
+
+unsafe impl FileRecord for VersionMinCommand {}
+
+#[derive(Clone, Copy, Default, Debug)]
+#[repr(C)]
 pub struct SourceVersionCommand {
     pub cmd: u32,
     pub cmdsize: u32,
@@ -358,6 +369,18 @@ impl MachRel {
 /// Encodes an X.Y.Z version number for a load command.
 pub fn encode_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 16) | (minor << 8) | patch
+}
+
+/// Formats a load command's version, omitting a zero patch level.
+pub fn format_version(version: u32) -> String {
+    let major = version >> 16;
+    let minor = (version >> 8) & 0xff;
+    let patch = version & 0xff;
+    if patch == 0 {
+        format!("{major}.{minor}")
+    } else {
+        format!("{major}.{minor}.{patch}")
+    }
 }
 
 pub fn platform_name(platform: u32) -> String {
