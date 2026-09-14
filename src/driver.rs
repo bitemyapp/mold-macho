@@ -130,6 +130,7 @@ pub fn link<E: Arch>(cmdline: &[String]) -> Result<i32, String> {
         }
     }
     lap(&mut phases, "resolve");
+    passes::check_input_platforms(&ctx);
     passes::remove_unreachable_files(&mut ctx);
     passes::check_duplicate_symbols(&ctx);
     crate::error::checkpoint();

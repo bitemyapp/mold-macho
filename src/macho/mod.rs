@@ -359,3 +359,22 @@ impl MachRel {
 pub fn encode_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 16) | (minor << 8) | patch
 }
+
+pub fn platform_name(platform: u32) -> String {
+    match platform {
+        PLATFORM_MACOS => "macOS",
+        PLATFORM_IOS => "iOS",
+        PLATFORM_TVOS => "tvOS",
+        PLATFORM_WATCHOS => "watchOS",
+        PLATFORM_BRIDGEOS => "bridgeOS",
+        PLATFORM_MACCATALYST => "Mac Catalyst",
+        PLATFORM_IOSSIMULATOR => "iOS-simulator",
+        PLATFORM_TVOSSIMULATOR => "tvOS-simulator",
+        PLATFORM_WATCHOSSIMULATOR => "watchOS-simulator",
+        PLATFORM_DRIVERKIT => "DriverKit",
+        PLATFORM_VISIONOS => "visionOS",
+        PLATFORM_VISIONOSSIMULATOR => "visionOS-simulator",
+        _ => return format!("unknown platform ({platform})"),
+    }
+    .to_string()
+}

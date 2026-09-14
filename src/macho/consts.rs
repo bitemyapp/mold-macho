@@ -51,18 +51,32 @@ pub const LC_REEXPORT_DYLIB: u32 = 0x1f | LC_REQ_DYLD;
 pub const LC_DYLD_INFO: u32 = 0x22;
 pub const LC_DYLD_INFO_ONLY: u32 = 0x22 | LC_REQ_DYLD;
 pub const LC_VERSION_MIN_MACOSX: u32 = 0x24;
+pub const LC_VERSION_MIN_IPHONEOS: u32 = 0x25;
 pub const LC_FUNCTION_STARTS: u32 = 0x26;
 pub const LC_MAIN: u32 = 0x28 | LC_REQ_DYLD;
 pub const LC_DATA_IN_CODE: u32 = 0x29;
 pub const LC_LINKER_OPTIMIZATION_HINT: u32 = 0x2e;
 pub const LC_SOURCE_VERSION: u32 = 0x2a;
 pub const LC_LINKER_OPTION: u32 = 0x2d;
+pub const LC_VERSION_MIN_TVOS: u32 = 0x2f;
+pub const LC_VERSION_MIN_WATCHOS: u32 = 0x30;
 pub const LC_BUILD_VERSION: u32 = 0x32;
 pub const LC_DYLD_EXPORTS_TRIE: u32 = 0x33 | LC_REQ_DYLD;
 pub const LC_DYLD_CHAINED_FIXUPS: u32 = 0x34 | LC_REQ_DYLD;
 
 // Platform identifiers for LC_BUILD_VERSION
 pub const PLATFORM_MACOS: u32 = 1;
+pub const PLATFORM_IOS: u32 = 2;
+pub const PLATFORM_TVOS: u32 = 3;
+pub const PLATFORM_WATCHOS: u32 = 4;
+pub const PLATFORM_BRIDGEOS: u32 = 5;
+pub const PLATFORM_MACCATALYST: u32 = 6;
+pub const PLATFORM_IOSSIMULATOR: u32 = 7;
+pub const PLATFORM_TVOSSIMULATOR: u32 = 8;
+pub const PLATFORM_WATCHOSSIMULATOR: u32 = 9;
+pub const PLATFORM_DRIVERKIT: u32 = 10;
+pub const PLATFORM_VISIONOS: u32 = 11;
+pub const PLATFORM_VISIONOSSIMULATOR: u32 = 12;
 
 // Segment protections
 pub const VM_PROT_READ: u32 = 1;

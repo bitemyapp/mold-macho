@@ -1157,6 +1157,22 @@ pub fn convert_init_offsets<E: Arch>(ctx: &mut Context<E>) {
     }
 }
 
+/// Validates the platforms of objects selected by resolution, including
+/// the LTO output. Unused archive members must not cause errors.
+pub fn check_input_platforms<E: Arch>(ctx: &Context<E>) {
+    for obj in ctx.objs.iter().filter(|obj| obj.is_alive) {
+        // Old objects and the synthesized object may have no version
+        // command. An object may also declare more than one platform.
+        let Some(&first) = obj.platforms.first() else { continue };
+        if !obj.platforms.contains(&ctx.args.platform) {
+            crate::error!(
+                "building for '{}', but linking in object file ({}) built for '{}'",
+                platform_name(ctx.args.platform), obj.mf.name, platform_name(first)
+            );
+        }
+    }
+}
+
 /// Hides the subsections of archive members that resolution left
 /// dead, so nothing of theirs reaches the output.
 pub fn remove_unreachable_files<E: Arch>(ctx: &mut Context<E>) {

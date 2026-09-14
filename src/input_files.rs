@@ -32,6 +32,9 @@ pub struct ObjectFile {
     /// LC_LINKER_OPTION auto-link requests, acted on only if the file
     /// is live.
     pub linker_options: Vec<Vec<String>>,
+    /// Platforms from LC_BUILD_VERSION or
+    /// LC_VERSION_MIN_*. Checked only after archive selection.
+    pub platforms: Vec<u32>,
     /// -hidden-l: this file's external definitions become private
     /// externals.
     pub hidden: bool,
@@ -85,6 +88,7 @@ impl ObjectFile {
             is_alive: true,
             priority: 0,
             linker_options: Vec::new(),
+            platforms: Vec::new(),
             hidden: false,
             sect_hdrs: std::borrow::Cow::Owned(Vec::new()),
             relocs: Vec::new(),
@@ -213,6 +217,7 @@ pub struct StagedObject {
     pub priority: u32,
     pub sect_hdrs: &'static [MachSection],
     pub linker_options: Vec<Vec<String>>,
+    pub platforms: Vec<u32>,
     pub isecs: Vec<InputSection>,
     pub relocs: Vec<crate::input_sections::Reloc>,
     pub subsecs: Vec<crate::input_sections::InputSectionId>,
@@ -323,6 +328,7 @@ pub fn stage_object<E: Arch>(
     let mut symtab_cmd = None;
     let mut dysymtab_cmd: Option<DysymtabCommand> = None;
     let mut linker_options = Vec::new();
+    let mut platforms = Vec::new();
     let mut dice = Vec::new();
     let mut loh = Vec::new();
 
@@ -341,6 +347,27 @@ pub fn stage_object<E: Arch>(
             }
             LC_SYMTAB => symtab_cmd = Some(SymtabCommand::read_from(&data[off..])),
             LC_DYSYMTAB => dysymtab_cmd = Some(DysymtabCommand::read_from(&data[off..])),
+            LC_BUILD_VERSION => {
+                let cmd = BuildVersionCommand::read_from(&data[off..]);
+                platforms.push(cmd.platform);
+            }
+            LC_VERSION_MIN_MACOSX | LC_VERSION_MIN_IPHONEOS | LC_VERSION_MIN_TVOS
+            | LC_VERSION_MIN_WATCHOS => {
+                // Legacy commands distinguish device and simulator
+                // builds by CPU type; arm64 simulators use LC_BUILD_VERSION.
+                let simulator = E::CPUTYPE == CPU_TYPE_X86_64;
+                let platform = match lc.cmd {
+                    LC_VERSION_MIN_MACOSX => PLATFORM_MACOS,
+                    LC_VERSION_MIN_IPHONEOS if simulator => PLATFORM_IOSSIMULATOR,
+                    LC_VERSION_MIN_IPHONEOS => PLATFORM_IOS,
+                    LC_VERSION_MIN_TVOS if simulator => PLATFORM_TVOSSIMULATOR,
+                    LC_VERSION_MIN_TVOS => PLATFORM_TVOS,
+                    LC_VERSION_MIN_WATCHOS if simulator => PLATFORM_WATCHOSSIMULATOR,
+                    LC_VERSION_MIN_WATCHOS => PLATFORM_WATCHOS,
+                    _ => unreachable!(),
+                };
+                platforms.push(platform);
+            }
             LC_LINKER_OPTION => {
                 // Auto-link requests: the object names libraries it
                 // needs, as NUL-terminated strings after a count.
@@ -655,6 +682,7 @@ pub fn stage_object<E: Arch>(
         priority,
         sect_hdrs,
         linker_options,
+        platforms,
         isecs,
         relocs: obj_relocs,
         subsecs,
@@ -902,6 +930,7 @@ pub fn integrate_objects<E: Arch>(
             is_alive: st.alive,
             priority: st.priority,
             linker_options: st.linker_options,
+            platforms: st.platforms,
             hidden: st.hidden,
             sect_hdrs: std::borrow::Cow::Borrowed(st.sect_hdrs),
             relocs: st.relocs,
@@ -995,6 +1024,7 @@ pub fn integrate_object_with<E: Arch>(
         is_alive: staged.alive,
         priority: staged.priority,
         linker_options: staged.linker_options,
+        platforms: staged.platforms,
         hidden: staged.hidden,
         sect_hdrs: std::borrow::Cow::Borrowed(staged.sect_hdrs),
         relocs: obj_relocs,
@@ -1065,6 +1095,7 @@ pub fn parse_bitcode<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile, ali
         is_alive: alive,
         priority,
         linker_options: Vec::new(),
+        platforms: Vec::new(),
         hidden: false,
         sect_hdrs: std::borrow::Cow::Borrowed(&[]),
         relocs: Vec::new(),
