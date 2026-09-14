@@ -17,6 +17,7 @@ use std::sync::Mutex;
 static COLOR: AtomicBool = AtomicBool::new(false);
 static FATAL_WARNINGS: AtomicBool = AtomicBool::new(false);
 static SUPPRESS_WARNINGS: AtomicBool = AtomicBool::new(false);
+static DEMANGLE: AtomicBool = AtomicBool::new(false);
 static HAS_ERROR: AtomicBool = AtomicBool::new(false);
 static OUTPUT_LOCK: Mutex<()> = Mutex::new(());
 
@@ -30,6 +31,23 @@ pub fn set_fatal_warnings(on: bool) {
 
 pub fn set_suppress_warnings(on: bool) {
     SUPPRESS_WARNINGS.store(on, Ordering::Relaxed);
+}
+
+pub fn set_demangle(on: bool) {
+    DEMANGLE.store(on, Ordering::Relaxed);
+}
+
+/// A diagnostic spelling only: symbol lookup and output use the
+/// original name. Mach-O adds an underscore to the Itanium ABI name.
+pub fn demangle(name: &str) -> std::borrow::Cow<'_, str> {
+    if DEMANGLE.load(Ordering::Relaxed) && name.starts_with("__Z") {
+        if let Ok(sym) = cpp_demangle::Symbol::new(&name.as_bytes()[1..]) {
+            if let Ok(text) = sym.demangle(&cpp_demangle::DemangleOptions::default()) {
+                return text.into();
+            }
+        }
+    }
+    name.into()
 }
 
 pub fn has_error() -> bool {

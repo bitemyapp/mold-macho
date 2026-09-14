@@ -214,6 +214,12 @@ impl Clone for Symbol {
     }
 }
 
+impl std::fmt::Display for Symbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&crate::error::demangle(self.name()))
+    }
+}
+
 /// Sentinel for a synthetic-slot index a symbol does not have.
 pub const NO_IDX: u32 = u32::MAX;
 

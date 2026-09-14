@@ -149,6 +149,7 @@ pub struct Args {
     /// -w: suppress warnings.
     pub suppress_warnings: bool,
     pub fatal_warnings: bool,
+    pub demangle: bool,
     /// -undefined dynamic_lookup: leave unresolved symbols to be looked
     /// up in any loaded image at run time.
     pub undefined_dynamic_lookup: bool,
@@ -293,6 +294,7 @@ impl Default for Args {
             uuid: true,
             suppress_warnings: false,
             fatal_warnings: false,
+            demangle: false,
             undefined_dynamic_lookup: false,
             undefined_warning: false,
             undefined_is_warning: false,
@@ -545,6 +547,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
                 .push(next_arg(&mut i).to_string()),
             "-w" => args.suppress_warnings = true,
             "-fatal_warnings" => args.fatal_warnings = true,
+            "-demangle" => args.demangle = true,
             "-help" => {
                 println!("Usage: ld64.mold [options] file...");
                 crate::error::exit_after_cleanup(0);
@@ -742,7 +745,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             // deterministic, so -reproducible has nothing to switch on.
             // -debug_variant silences ld64's warnings that only matter
             // for binaries shipped to customers; there are none here.
-            "-demangle" | "-reproducible" | "-debug_variant" | "-O0" | "-O1" | "-O2" | "-O3"
+            "-reproducible" | "-debug_variant" | "-O0" | "-O1" | "-O2" | "-O3"
             | "-Os" | "-Oz" => {}
 
             "-lto_library" => args.lto_library = Some(next_arg(&mut i).to_string()),

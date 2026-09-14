@@ -706,7 +706,7 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
         match rec.personality() {
             Some(p) => {
                 let Some(&symnum) = index_of_sym.get(&p) else {
-                    fatal!("-r: unwind personality lost: {}", ctx.symbols[p].name());
+                    fatal!("-r: unwind personality lost: {}", ctx.symbols[p]);
                 };
                 cu_data.extend_from_slice(&0u64.to_le_bytes());
                 cu_relocs.push(MachRel {
@@ -784,7 +784,7 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                     eh_data.extend_from_slice(&cie.data);
                     if let Some(p) = cie.personality {
                         let Some(&symnum) = index_of_sym.get(&p) else {
-                            fatal!("-r: unwind personality lost: {}", ctx.symbols[p].name());
+                            fatal!("-r: unwind personality lost: {}", ctx.symbols[p]);
                         };
                         // The cell keeps the object's addend (4 on
                         // x86-64, where a pcrel field is relative to

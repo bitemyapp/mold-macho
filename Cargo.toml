@@ -19,6 +19,7 @@ members = ["cli", "targets/*", "tests"]
 default-members = [".", "cli", "targets/*", "tests"]
 
 [dependencies]
+cpp_demangle = "0.4"
 hashbrown = "0.17"
 libc = "0.2"
 memmap2 = "0.9"

@@ -1746,7 +1746,7 @@ pub fn check_duplicate_symbols<E: Arch>(ctx: &Context<E>) {
             "duplicate symbol: {}: {}: {}",
             file_display(&ctx.objs[obj_idx]),
             prev,
-            ctx.symbols[sym_id].name()
+            ctx.symbols[sym_id]
         );
     }
 }
@@ -1784,7 +1784,7 @@ pub fn report_undef_errors<E: Arch>(ctx: &mut Context<E>) {
                 || ctx.args.allowed_undefined.iter().any(|n| n == sym.name());
             if allowed {
                 if ctx.args.undefined_warning {
-                    crate::warn!("undefined symbol: {}", ctx.symbols[i].name());
+                    crate::warn!("undefined symbol: {}", ctx.symbols[i]);
                 }
                 let sym = &mut ctx.symbols[i];
                 sym.set_file(FileId::Dylib((usize::MAX) as u32));
@@ -1792,7 +1792,7 @@ pub fn report_undef_errors<E: Arch>(ctx: &mut Context<E>) {
                 sym.set_is_extern(true);
             } else {
                 let file = who_wants(ctx, i as u32);
-                error!("undefined symbol: {}: {}", file, ctx.symbols[i].name());
+                error!("undefined symbol: {}: {}", file, ctx.symbols[i]);
             }
         }
     }
@@ -2009,9 +2009,7 @@ pub fn scan_relocations<E: Arch>(ctx: &mut Context<E>) {
         // descriptor, and an ordinary load of a TLV would read the
         // descriptor as data. ld64 rejects both directions.
         if is_thread_local_sym(ctx, id) != matches!(class, RelocClass::Tlv) {
-            fatal!("illegal thread local variable reference to regular symbol `{}`",
-                sym.name()
-            );
+            fatal!("illegal thread local variable reference to regular symbol `{sym}`");
         }
 
         match class {
@@ -3327,7 +3325,7 @@ pub fn create_symbol_reexports<E: Arch>(ctx: &mut Context<E>) {
         if !name.contains(['*', '?', '['])
             && ctx.symbols.get(name).is_none_or(|id| !ctx.symbols[id].is_defined())
         {
-            error!("-reexported_symbols_list: undefined symbol: {name}");
+            error!("-reexported_symbols_list: undefined symbol: {}", crate::error::demangle(name));
         }
     }
     let targets: Vec<_> = ctx.symbols.syms.iter().enumerate()
@@ -3385,11 +3383,11 @@ pub fn add_synthetic_symbols<E: Arch>(ctx: &mut Context<E>) {
     let aliases = std::mem::take(&mut ctx.args.aliases);
     for (existing, new) in &aliases {
         let Some(src) = ctx.symbols.get(existing) else {
-            error!("-alias: undefined base symbol: {existing}");
+            error!("-alias: undefined base symbol: {}", crate::error::demangle(existing));
             continue;
         };
         if !ctx.symbols[src].is_defined() {
-            error!("-alias: undefined base symbol: {existing}");
+            error!("-alias: undefined base symbol: {}", ctx.symbols[src]);
             continue;
         }
         let dst = ctx.symbols.intern(String::leak(new.clone()));
@@ -3469,7 +3467,7 @@ pub fn fix_synthetic_symbols<E: Arch>(ctx: &mut Context<E>) {
                     .map(|&id| ctx.chunk_header(id))
                     .find(|hdr| hdr.is_sect && hdr.segname == seg && hdr.sectname == *sect)
                 else {
-                    fatal!("no section for boundary symbol: {}", ctx.symbols[id].name());
+                    fatal!("no section for boundary symbol: {}", ctx.symbols[id]);
                 };
                 if is_start {
                     hdr.addr
@@ -3479,7 +3477,7 @@ pub fn fix_synthetic_symbols<E: Arch>(ctx: &mut Context<E>) {
             }
             None => {
                 let Some(segment) = ctx.segments.iter().find(|s| s.name == seg) else {
-                    fatal!("no segment for boundary symbol: {}", ctx.symbols[id].name());
+                    fatal!("no segment for boundary symbol: {}", ctx.symbols[id]);
                 };
                 if is_start {
                     segment.cmd.vmaddr
@@ -5344,7 +5342,7 @@ pub fn resolve_entry<E: Arch>(ctx: &mut Context<E>) {
         // names the symbol's stub, as ld64 does.
         Some(id) if ctx.symbols[id].is_imported() => ctx.entry_addr = ctx.sym_stub_addr(id),
         Some(id) if ctx.symbols[id].is_defined() => ctx.entry_addr = ctx.sym_addr(id),
-        _ => error!("undefined symbol for entry point: {}", ctx.args.entry),
+        _ => error!("undefined symbol for entry point: {}", crate::error::demangle(&ctx.args.entry)),
     }
 }
 

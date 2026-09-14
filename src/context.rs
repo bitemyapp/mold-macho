@@ -462,7 +462,7 @@ impl<E: Arch> Context<E> {
         let sym = &self.symbols[id];
         match sym.file() {
             None => {
-                error!("undefined symbol: {}", sym.name());
+                error!("undefined symbol: {sym}");
                 0
             }
             Some(FileId::Obj(_)) => {

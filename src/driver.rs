@@ -88,6 +88,7 @@ pub fn link<E: Arch>(cmdline: &[String]) -> Result<i32, String> {
     let mut ctx: Context<E> = Context::new(args);
     crate::error::set_suppress_warnings(ctx.args.suppress_warnings);
     crate::error::set_fatal_warnings(ctx.args.fatal_warnings);
+    crate::error::set_demangle(ctx.args.demangle);
 
     // -print_statistics phase timer, in the spirit of mold's --perf.
     let t0 = std::time::Instant::now();
