@@ -86,6 +86,8 @@ pub struct Args {
     pub map: Option<String>,
     /// -dependency_info: write Xcode's binary dependency listing.
     pub dependency_info: Option<String>,
+    /// -sdk_imports: Xcode's JSON report of imported APIs.
+    pub sdk_imports: Option<String>,
     /// Emit chained fixups instead of classic dyld info. None means
     /// "decide from the deployment target".
     pub fixup_chains: Option<bool>,
@@ -262,6 +264,7 @@ impl Default for Args {
             compatibility_version: encode_version(1, 0, 0),
             map: None,
             dependency_info: None,
+            sdk_imports: None,
             fixup_chains: None,
             lto_library: None,
             stack_size: 0,
@@ -485,6 +488,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
                 args.install_name = Some(next_arg(&mut i).to_string())
             }
             "-map" => args.map = Some(next_arg(&mut i).to_string()),
+            "-sdk_imports" => args.sdk_imports = Some(next_arg(&mut i).to_string()),
             "-fixup_chains" => args.fixup_chains = Some(true),
             "-no_fixup_chains" => args.fixup_chains = Some(false),
             "-adhoc_codesign" => args.adhoc_codesign = true,
@@ -773,5 +777,8 @@ pub fn parse_args(cmdline: &[String]) -> Args {
         args.pagezero_size = 0;
     }
 
+    if args.relocatable && args.sdk_imports.is_some() {
+        fatal!("-sdk_imports cannot be used with -r");
+    }
     args
 }

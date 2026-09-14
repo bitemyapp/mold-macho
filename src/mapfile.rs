@@ -8,6 +8,55 @@ use crate::context::Context;
 use crate::fatal;
 use crate::input_files::FileId;
 
+fn json_string(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\x00'..='\x1f' => { let _ = write!(out, "\\u{:04x}", c as u32); }
+            _ => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Xcode's version-1 API import report. Despite its name, sdkImports
+/// includes imports from non-SDK dylibs too, grouped by install name.
+pub fn write_sdk_imports<E: Arch>(ctx: &Context<E>) {
+    use crate::macho::{format_version, platform_name};
+    let Some(path) = &ctx.args.sdk_imports else { return };
+    let mut imports = std::collections::BTreeMap::<&str, Vec<&str>>::new();
+    for sym in &ctx.symbols.syms {
+        if !sym.is_imported() || !sym.is_used() {
+            continue;
+        }
+        let Some(FileId::Dylib(idx)) = sym.file() else { continue };
+        // Dynamic-lookup symbols have no defining library to report.
+        let Some(dylib) = ctx.dylibs.get(idx as usize) else { continue };
+        imports.entry(&dylib.install_name).or_default().push(sym.name());
+    }
+    let libraries: Vec<String> = imports.into_iter().map(|(name, mut symbols)| {
+        symbols.sort_unstable();
+        symbols.dedup();
+        let symbols: Vec<String> = symbols.into_iter().map(json_string).collect();
+        format!("{{\"installName\":{},\"symbols\":[{}]}}", json_string(name), symbols.join(","))
+    }).collect();
+    let output = json_string(&ctx.args.output);
+    let report = format!(
+        "{{\"version\":1,\"output\":{output},\"arch\":{},\"linker\":{},\"apiListVersion\":0,\
+         \"platform\":{},\"deploymentVersion\":{},\"sdkVersion\":{},\
+         \"inputs\":[{{\"path\":{output},\"sdkImports\":[{}]}}]}}\n",
+        json_string(E::NAME), json_string(concat!("mold-macho-", env!("CARGO_PKG_VERSION"))),
+        json_string(&platform_name(ctx.args.platform)),
+        json_string(&format_version(ctx.args.platform_minos)),
+        json_string(&format_version(ctx.args.platform_sdk)), libraries.join(",")
+    );
+    std::fs::write(path, report).unwrap_or_else(|e| fatal!("cannot write {path}: {e}"));
+}
+
 /// Writes the -dependency_info file: Xcode's incremental build system
 /// reads it to learn which files the link actually consumed. The
 /// format is binary: an opcode byte then a NUL-terminated string -

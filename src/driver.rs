@@ -228,6 +228,7 @@ pub fn link<E: Arch>(cmdline: &[String]) -> Result<i32, String> {
     crate::error::checkpoint();
     crate::mapfile::print_map(&ctx);
     crate::mapfile::write_dependency_info(&ctx);
+    crate::mapfile::write_sdk_imports(&ctx);
     lap(&mut phases, "layout");
 
     // Write the output. The file is created up front and its ranges are
