@@ -1574,6 +1574,20 @@ pub fn auto_hide_weak_defs<E: Arch>(ctx: &mut Context<E>) {
         });
 }
 
+/// Hide definitions before dead stripping and relocation scanning so
+/// they neither keep otherwise unused code alive nor bind as exports.
+pub fn hide_all_exports<E: Arch>(ctx: &mut Context<E>) {
+    if !ctx.args.no_exported_symbols {
+        return;
+    }
+    use rayon::prelude::*;
+    ctx.symbols.syms.par_iter_mut().for_each(|sym| {
+        if matches!(sym.file(), Some(FileId::Obj(_))) {
+            sym.set_is_private_extern(true);
+        }
+    });
+}
+
 /// Discards the losing copies of coalesced weak definitions. Symbol
 /// resolution picks one definition per weak symbol, but the losing
 /// objects' subsections still hold the duplicate bodies - a C++-heavy

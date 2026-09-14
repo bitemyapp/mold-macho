@@ -136,6 +136,7 @@ pub fn link<E: Arch>(cmdline: &[String]) -> Result<i32, String> {
     passes::check_duplicate_symbols(&ctx);
     crate::error::checkpoint();
     if ctx.args.relocatable {
+        passes::hide_all_exports(&mut ctx);
         passes::merge_literals(&mut ctx);
         passes::coalesce_objc_refs(&mut ctx);
         // ld64 -r keeps one copy of each weak definition (the marker
@@ -171,6 +172,7 @@ pub fn link<E: Arch>(cmdline: &[String]) -> Result<i32, String> {
     tp!("convert_common_symbols", passes::convert_common_symbols(&mut ctx));
     tp!("create_objc_msgsend_stubs", passes::create_objc_msgsend_stubs(&mut ctx));
     tp!("auto_hide_weak_defs", passes::auto_hide_weak_defs(&mut ctx));
+    tp!("hide_all_exports", passes::hide_all_exports(&mut ctx));
     tp!("coalesce_weak_defs", passes::coalesce_weak_defs(&mut ctx));
     passes::print_dependencies(&ctx);
     passes::print_why_load(&ctx);

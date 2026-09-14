@@ -491,7 +491,7 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                 // Only the copy that won resolution is emitted.
                 if nlist.is_stab()
                     || !nlist.is_extern()
-                    || nlist.n_type & N_PEXT == 0
+                    || !sym.is_private_extern()
                     || !matches!(sym.file(), Some(FileId::Obj(o)) if o as usize == obj_idx)
                 {
                     continue;

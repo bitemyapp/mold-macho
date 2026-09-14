@@ -80,6 +80,8 @@ pub struct Args {
     /// If set, only these symbols are exported (-exported_symbols_list
     /// or -exported_symbol).
     pub exported_symbols: Option<Vec<String>>,
+    /// -no_exported_symbols: hide every definition.
+    pub no_exported_symbols: bool,
     /// Symbols to remove from the exported set.
     pub unexported_symbols: Vec<String>,
     pub current_version: u32,
@@ -261,6 +263,7 @@ impl Default for Args {
             load_objc: false,
             forced_undefined: Vec::new(),
             exported_symbols: None,
+            no_exported_symbols: false,
             unexported_symbols: Vec::new(),
             current_version: encode_version(1, 0, 0),
             compatibility_version: encode_version(1, 0, 0),
@@ -561,6 +564,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
                 .exported_symbols
                 .get_or_insert_with(Vec::new)
                 .push(next_arg(&mut i).to_string()),
+            "-no_exported_symbols" => args.no_exported_symbols = true,
             "-exported_symbols_list" => {
                 let path = next_arg(&mut i).to_string();
                 let list = args.exported_symbols.get_or_insert_with(Vec::new);
@@ -787,6 +791,11 @@ pub fn parse_args(cmdline: &[String]) -> Args {
 
     if args.relocatable && args.sdk_imports.is_some() {
         fatal!("-sdk_imports cannot be used with -r");
+    }
+    if args.no_exported_symbols
+        && (args.exported_symbols.is_some() || !args.unexported_symbols.is_empty())
+    {
+        fatal!("-no_exported_symbols cannot be used with -exported_symbol* or -unexported_symbol*");
     }
     args
 }
