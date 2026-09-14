@@ -146,20 +146,27 @@ pub fn encode_export_trie<E: Arch>(
         .par_iter()
         .filter_map(|&id| {
             let sym = &ctx.symbols[id];
-            if let Some(exported) = &ctx.args.exported_symbols {
-                if !exported.iter().any(|pat| pat == sym.name()) {
+            let target = ctx.indirect_aliases.iter()
+                .find_map(|&(a, t)| (a == id).then_some(t));
+            let same_name = target.is_some_and(|t| ctx.symbols[t].name() == sym.name());
+            // Explicit reexports survive restrictions on local exports.
+            if !same_name {
+                if let Some(exported) = &ctx.args.exported_symbols {
+                    if !exported.iter().any(|pat| pat == sym.name()) {
+                        return None;
+                    }
+                }
+                if ctx.args.unexported_symbols.iter().any(|pat| pat == sym.name()) {
                     return None;
                 }
             }
-            if ctx.args.unexported_symbols.iter().any(|pat| pat == sym.name()) {
-                return None;
-            }
-            if let Some(&(_, target)) = ctx.indirect_aliases.iter().find(|&&(a, _)| a == id) {
+            if let Some(target) = target {
                 let Some(FileId::Dylib(dylib)) = ctx.symbols[target].file() else {
                     return None;
                 };
                 let ordinal = ctx.bind_ordinal(dylib) as u32;
-                return Some((sym.name(), Export::Reexport { ordinal, name: ctx.symbols[target].name() }));
+                let name = if same_name { "" } else { ctx.symbols[target].name() };
+                return Some((sym.name(), Export::Reexport { ordinal, name }));
             }
             // The kind bits tell a client linker (and dyld) that the
             // export is a TLV descriptor; ld64 sets them, and a

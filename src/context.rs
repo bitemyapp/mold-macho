@@ -102,7 +102,7 @@ pub struct Context<E: Arch> {
     /// ld64's __OBJC_$_INSTANCE_METHODS_Foo(A|B) on a merged method
     /// list, and the like. (name, subsection).
     pub extra_local_syms: Vec<(&'static str, u32)>,
-    /// -alias names for imported symbols: (alias, imported target).
+    /// -alias and selective reexports: (alias, imported target).
     /// Emitted as N_INDR symbols and re-export trie entries.
     pub indirect_aliases: Vec<(SymbolId, SymbolId)>,
     /// section$start/end and segment$start/end symbols to resolve

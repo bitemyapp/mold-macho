@@ -84,6 +84,8 @@ pub struct Args {
     pub no_exported_symbols: bool,
     /// Symbols to remove from the exported set.
     pub unexported_symbols: Vec<String>,
+    /// -reexported_symbols_list: publish selected imports as exports.
+    pub reexported_symbols: Vec<String>,
     pub current_version: u32,
     pub compatibility_version: u32,
     /// -map: write a map file describing the output layout.
@@ -265,6 +267,7 @@ impl Default for Args {
             exported_symbols: None,
             no_exported_symbols: false,
             unexported_symbols: Vec::new(),
+            reexported_symbols: Vec::new(),
             current_version: encode_version(1, 0, 0),
             compatibility_version: encode_version(1, 0, 0),
             map: None,
@@ -582,6 +585,17 @@ pub fn parse_args(cmdline: &[String]) -> Args {
                     Ok(text) => args.unexported_symbols.extend(symbol_list(&text)),
                     Err(_) => fatal!("cannot read -unexported_symbols_list: {path}"),
                 }
+            }
+            "-reexported_symbols_list" => {
+                let path = next_arg(&mut i).to_string();
+                let text = std::fs::read_to_string(&path)
+                    .unwrap_or_else(|_| fatal!("cannot read -reexported_symbols_list: {path}"));
+                let names = symbol_list(&text);
+                // Exact names force a reference even if no object
+                // mentions them. Patterns only match existing symbols.
+                args.forced_undefined.extend(names.iter()
+                    .filter(|name| !name.contains(['*', '?', '['])).cloned());
+                args.reexported_symbols.extend(names);
             }
             // The -dylib_ spellings are the older names ld64 still
             // accepts; Xcode passes -dylib_compatibility_version.

@@ -173,6 +173,7 @@ pub fn link<E: Arch>(cmdline: &[String]) -> Result<i32, String> {
     tp!("create_objc_msgsend_stubs", passes::create_objc_msgsend_stubs(&mut ctx));
     tp!("auto_hide_weak_defs", passes::auto_hide_weak_defs(&mut ctx));
     tp!("hide_all_exports", passes::hide_all_exports(&mut ctx));
+    tp!("create_symbol_reexports", passes::create_symbol_reexports(&mut ctx));
     tp!("coalesce_weak_defs", passes::coalesce_weak_defs(&mut ctx));
     passes::print_dependencies(&ctx);
     passes::print_why_load(&ctx);

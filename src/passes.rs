@@ -3318,6 +3318,41 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
     }
 }
 
+/// Publishes selected imports without reexporting their whole dylib.
+pub fn create_symbol_reexports<E: Arch>(ctx: &mut Context<E>) {
+    if ctx.args.reexported_symbols.is_empty() {
+        return;
+    }
+    for name in &ctx.args.reexported_symbols {
+        if !name.contains(['*', '?', '['])
+            && ctx.symbols.get(name).is_none_or(|id| !ctx.symbols[id].is_defined())
+        {
+            error!("-reexported_symbols_list: undefined symbol: {name}");
+        }
+    }
+    let targets: Vec<_> = ctx.symbols.syms.iter().enumerate()
+        .filter(|(_, sym)| {
+            matches!(sym.file(), Some(FileId::Dylib(_)))
+                && ctx.args.reexported_symbols.iter()
+                    .any(|pat| crate::util::glob_match(pat, sym.name()))
+        })
+        .map(|(i, _)| i as u32)
+        .collect();
+    let internal = ctx.internal_obj.unwrap() as u32;
+    for target in targets {
+        let name = ctx.symbols[target].name();
+        // Keep the import as the target of references within this
+        // image, and add a separate, same-name N_INDR export. Apple
+        // emits both entries too; the export has no local address.
+        let alias = ctx.symbols.add_local(name);
+        let sym = &mut ctx.symbols[alias];
+        sym.set_file(FileId::Obj(internal));
+        sym.set_is_extern(true);
+        ctx.indirect_aliases.push((alias, target));
+        ctx.args.forced_undefined.push(name.to_string());
+    }
+}
+
 /// Defines the symbols the linker itself provides.
 pub fn add_synthetic_symbols<E: Arch>(ctx: &mut Context<E>) {
     let internal = ctx.internal_obj.expect("internal object not created yet") as u32;
