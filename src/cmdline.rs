@@ -38,6 +38,7 @@ pub enum InputArg {
     /// dylib's load command.
     NeededLib(String),
     NeededFramework(String),
+    NeededFile(String),
 }
 
 /// Parsed command line arguments.
@@ -449,6 +450,9 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             "-needed_framework" => args
                 .inputs
                 .push(InputArg::NeededFramework(next_arg(&mut i).to_string())),
+            "-needed_library" => args
+                .inputs
+                .push(InputArg::NeededFile(next_arg(&mut i).to_string())),
             "-weak_library" => args
                 .inputs
                 .push(InputArg::WeakFile(next_arg(&mut i).to_string())),

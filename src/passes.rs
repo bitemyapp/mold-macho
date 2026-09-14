@@ -326,7 +326,8 @@ pub fn read_input_files<E: Arch>(ctx: &mut Context<E>) {
         };
         for arg in &inputs {
             match arg {
-                InputArg::File(path) | InputArg::WeakFile(path) | InputArg::ReexportFile(path) => {
+                InputArg::File(path) | InputArg::WeakFile(path) | InputArg::ReexportFile(path)
+                | InputArg::NeededFile(path) => {
                     consider(Path::new(path), &mut stubs)
                 }
                 InputArg::Lib(name, _) | InputArg::ReexportLib(name) | InputArg::NeededLib(name) => {
@@ -374,6 +375,14 @@ pub fn read_input_files<E: Arch>(ctx: &mut Context<E>) {
             InputArg::ReexportFile(path) => {
                 let mf = MappedFile::must_open(Path::new(path));
                 collect_file(ctx, mf, false, false, true, false, &mut queue);
+            }
+            InputArg::NeededFile(path) => {
+                let mf = MappedFile::must_open(Path::new(path));
+                let before = ctx.dylibs.len();
+                collect_file(ctx, mf, false, false, false, false, &mut queue);
+                for dylib in &mut ctx.dylibs[before..] {
+                    dylib.is_needed = true;
+                }
             }
             InputArg::ReexportLib(name) => match find_library(ctx, name) {
                 Some(path) => {
