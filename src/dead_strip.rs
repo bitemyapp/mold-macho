@@ -60,7 +60,7 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
                 }
                 let keep_type = matches!(
                     ctx.hdr_of(isec).section_type(),
-                    S_MOD_INIT_FUNC_POINTERS | S_INIT_FUNC_OFFSETS | S_THREAD_LOCAL_VARIABLES
+                    S_MOD_INIT_FUNC_POINTERS | S_INIT_FUNC_OFFSETS
                 );
                 let keep_attr =
                     ctx.hdr_of(isec).flags & (S_ATTR_NO_DEAD_STRIP | S_ATTR_LIVE_SUPPORT) != 0;
