@@ -246,9 +246,21 @@ impl InputSection {
     /// rounding every atom up to the section's alignment; the latter
     /// pads the output by an average of half the alignment per atom
     /// (NetNewsWire's __TEXT,__const was 11KB larger than ld-prime's).
+    ///
+    /// An atom whose size is a multiple of that alignment is one
+    /// aligned unit (a 16-byte SIMD literal, for example). A leftover
+    /// modulus from a less-aligned object address - literal merge
+    /// raising p2align, or __literal16 folded into 8-aligned
+    /// __TEXT,__const - must not keep it at 8 mod 16: ARM64
+    /// PAGEOFF12's scaled immediate would drop the low bits and load
+    /// a neighbor.
     pub fn align_offset(&self, off: u64) -> u64 {
         let align = 1u64 << self.p2align;
-        crate::util::align_to_mod(off, align, self.input_addr as u64 & (align - 1))
+        let mut modulus = self.input_addr as u64 & (align - 1);
+        if modulus != 0 && self.size as u64 % align == 0 {
+            modulus = 0;
+        }
+        crate::util::align_to_mod(off, align, modulus)
     }
 
     pub fn is_alive(&self) -> bool {
