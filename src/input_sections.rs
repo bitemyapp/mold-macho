@@ -205,11 +205,18 @@ const IS_VISITED: u8 = 1 << 1;
 /// are set by hand), so create_output_sections must not assign it to
 /// an output section by name.
 const IS_PLACED: u8 = 1 << 2;
+/// The subsection starts at a multiple of its alignment regardless of
+/// its input offset: a fixed-size literal, which ld64 aligns to the
+/// literal size with no modulus.
+const NO_MODULUS: u8 = 1 << 3;
 
 impl InputSection {
     /// The initial flag word of a live section.
     pub fn flags_alive() -> std::sync::atomic::AtomicU8 {
         std::sync::atomic::AtomicU8::new(IS_ALIVE)
+    }
+    pub fn flags_alive_no_modulus() -> std::sync::atomic::AtomicU8 {
+        std::sync::atomic::AtomicU8::new(IS_ALIVE | NO_MODULUS)
     }
     /// The initial flag word of a section that never joins the link.
     pub fn flags_dead() -> std::sync::atomic::AtomicU8 {
@@ -247,20 +254,20 @@ impl InputSection {
     /// pads the output by an average of half the alignment per atom
     /// (NetNewsWire's __TEXT,__const was 11KB larger than ld-prime's).
     ///
-    /// An atom whose size is a multiple of that alignment is one
-    /// aligned unit (a 16-byte SIMD literal, for example). A leftover
-    /// modulus from a less-aligned object address - literal merge
-    /// raising p2align, or __literal16 folded into 8-aligned
-    /// __TEXT,__const - must not keep it at 8 mod 16: ARM64
-    /// PAGEOFF12's scaled immediate would drop the low bits and load
-    /// a neighbor.
+    /// ld64 models this as an atom alignment of (power of two,
+    /// modulus). A fixed-size literal is the exception: its alignment
+    /// is the literal size with modulus 0, so a 16-byte literal from a
+    /// p2align-3 __literal16 section, or one that survived merging
+    /// with a copy from a better-aligned section, still lands on a
+    /// 16-byte boundary. Its input offset is not a constraint the
+    /// compiler meant, and a 16-byte load through a scaled PAGEOFF12
+    /// immediate can only address a 16-aligned slot.
     pub fn align_offset(&self, off: u64) -> u64 {
         let align = 1u64 << self.p2align;
-        let mut modulus = self.input_addr as u64 & (align - 1);
-        if modulus != 0 && self.size as u64 % align == 0 {
-            modulus = 0;
+        if self.flags.load(std::sync::atomic::Ordering::Relaxed) & NO_MODULUS != 0 {
+            return crate::util::align_to(off, align);
         }
-        crate::util::align_to_mod(off, align, modulus)
+        crate::util::align_to_mod(off, align, self.input_addr as u64 & (align - 1))
     }
 
     pub fn is_alive(&self) -> bool {

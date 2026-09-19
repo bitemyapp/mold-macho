@@ -552,17 +552,22 @@ pub fn stage_object<E: Arch>(
                 let lo = sect.offset as u64 + (start - sect.addr);
                 &data[lo as usize..(lo + (end - start)) as usize]
             };
+            // A fixed-size literal is aligned to its size, whatever the
+            // section header says: ld64's Literal{4,8,16}Section gives
+            // every atom Alignment(2/3/4) with no modulus. Compilers
+            // emit __literal16 with p2align 3 for a 16-byte constant
+            // whose type is only 8-aligned, and rely on the linker to
+            // place it where a 16-byte load can reach it.
+            let literal_p2align = match sect.section_type() {
+                S_4BYTE_LITERALS => Some(2u8),
+                S_8BYTE_LITERALS => Some(3),
+                S_16BYTE_LITERALS => Some(4),
+                _ => None,
+            };
             isecs.push(InputSection {
                 file: u32::MAX,
                 shndx: i as u32,
-                // A 16-byte literal is one SIMD unit. Compilers
-                // sometimes emit __literal16 with p2align 3; ARM64
-                // ldr q PAGEOFF12 can only address a 16-aligned slot.
-                p2align: if sect.section_type() == S_16BYTE_LITERALS {
-                    (sect.p2align as u8).max(4)
-                } else {
-                    sect.p2align as u8
-                },
+                p2align: literal_p2align.unwrap_or(sect.p2align as u8),
                 input_addr: start as u32,
                 size: (end - start) as u32,
                 contents: if contents.is_empty() { 0 } else { contents.as_ptr() as usize },
@@ -570,7 +575,11 @@ pub fn stage_object<E: Arch>(
                 nrels: 0,
                 output_section: u32::MAX,
                 offset: 0,
-                flags: InputSection::flags_alive(),
+                flags: if literal_p2align.is_some() {
+                    InputSection::flags_alive_no_modulus()
+                } else {
+                    InputSection::flags_alive()
+                },
                 replacement: crate::input_sections::NO_REPLACEMENT,
                 unwind_offset: 0,
                 nunwind: 0,
