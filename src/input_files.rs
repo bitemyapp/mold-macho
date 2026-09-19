@@ -555,7 +555,14 @@ pub fn stage_object<E: Arch>(
             isecs.push(InputSection {
                 file: u32::MAX,
                 shndx: i as u32,
-                p2align: sect.p2align as u8,
+                // A 16-byte literal is one SIMD unit. Compilers
+                // sometimes emit __literal16 with p2align 3; ARM64
+                // ldr q PAGEOFF12 can only address a 16-aligned slot.
+                p2align: if sect.section_type() == S_16BYTE_LITERALS {
+                    (sect.p2align as u8).max(4)
+                } else {
+                    sect.p2align as u8
+                },
                 input_addr: start as u32,
                 size: (end - start) as u32,
                 contents: if contents.is_empty() { 0 } else { contents.as_ptr() as usize },

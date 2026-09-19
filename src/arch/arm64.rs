@@ -54,7 +54,22 @@ fn write_add_ldst(loc: &mut [u8], val: u64) {
         }
     }
 
-    write32(loc, insn | ((bits(val, 11, scale as u32) as u32) << 10));
+    // The scaled unsigned-offset encoding cannot represent a
+    // misaligned target. Silently dropping the low bits would load a
+    // neighboring slot.
+    if scale > 0 && val & ((1u64 << scale) - 1) != 0 {
+        fatal!(
+            "PAGEOFF12 target {val:#x} is not aligned to {}",
+            1u64 << scale
+        );
+    }
+
+    // Bits [21:10] hold the 12-bit immediate. Compilers usually leave
+    // them zero, but OR-ing without clearing would mix a leftover
+    // placeholder with the final page offset.
+    const IMM12: u32 = 0x003f_fc00;
+    let imm = (bits(val, 11, scale as u32) as u32) << 10;
+    write32(loc, (insn & !IMM12) | imm);
 }
 
 impl Arch for Arm64 {
