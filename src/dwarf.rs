@@ -143,7 +143,12 @@ enum Value<'a> {
 
 /// Reads one attribute value of the given form, returning it when it
 /// can be a string.
-fn read_form<'a>(r: &mut Reader<'a>, form: u64, addr_size: usize, implicit: i64) -> Option<Value<'a>> {
+fn read_form<'a>(
+    r: &mut Reader<'a>,
+    form: u64,
+    addr_size: usize,
+    implicit: i64,
+) -> Option<Value<'a>> {
     Some(match form {
         DW_FORM_ADDR => Value::Other(match addr_size {
             4 => r.u32()? as u64,
@@ -162,7 +167,9 @@ fn read_form<'a>(r: &mut Reader<'a>, form: u64, addr_size: usize, implicit: i64)
         DW_FORM_DATA2 | DW_FORM_REF2 => Value::Other(r.u16()? as u64),
         DW_FORM_DATA4 | DW_FORM_REF4 | DW_FORM_REF_ADDR | DW_FORM_SEC_OFFSET | DW_FORM_REF_SUP4
         | DW_FORM_STRP_SUP => Value::Other(r.u32()? as u64),
-        DW_FORM_DATA8 | DW_FORM_REF8 | DW_FORM_REF_SIG8 | DW_FORM_REF_SUP8 => Value::Other(r.u64()?),
+        DW_FORM_DATA8 | DW_FORM_REF8 | DW_FORM_REF_SIG8 | DW_FORM_REF_SUP8 => {
+            Value::Other(r.u64()?)
+        }
         DW_FORM_STRING => Value::Inline(r.cstr()?),
         DW_FORM_BLOCK | DW_FORM_EXPRLOC => {
             let n = r.uleb()? as usize;
@@ -217,9 +224,7 @@ fn read_form<'a>(r: &mut Reader<'a>, form: u64, addr_size: usize, implicit: i64)
 /// through __debug_str_offsets.
 pub fn compile_unit_name(file: &[u8], sects: &[MachSection]) -> Option<(String, String)> {
     let section = |name: &str| -> Option<&[u8]> {
-        let s = sects
-            .iter()
-            .find(|s| s.segname() == "__DWARF" && s.sectname() == name)?;
+        let s = sects.iter().find(|s| s.segname() == "__DWARF" && s.sectname() == name)?;
         file.get(s.offset as usize..(s.offset as u64 + s.size) as usize)
     };
     let info = section("__debug_info")?;

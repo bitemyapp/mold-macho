@@ -4,9 +4,9 @@
 
 use crate::arch::Arch;
 use crate::context::Context;
+use crate::input_files::FileId;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
-use crate::input_files::FileId;
 use crate::util::{align_to, write_uleb};
 
 /// A section created from a file by -sectcreate, or an empty one for
@@ -18,7 +18,11 @@ pub struct SectCreateSection {
 }
 
 impl SectCreateSection {
-    pub fn new(segname: &'static str, sectname: &str, contents: &'static [u8]) -> SectCreateSection {
+    pub fn new(
+        segname: &'static str,
+        sectname: &str,
+        contents: &'static [u8],
+    ) -> SectCreateSection {
         let mut hdr = ChunkHeader::new(segname, sectname);
         hdr.size = contents.len() as u64;
         SectCreateSection { hdr, contents }
@@ -235,11 +239,8 @@ pub fn write_code_signature<E: Arch>(
     push_be64(&mut sig, 0); // code limit 64
     push_be64(&mut sig, text.cmd.fileoff); // exec segment base
     push_be64(&mut sig, text.cmd.filesize); // exec segment limit
-    let exec_seg_flags = if ctx.args.output_type == MH_EXECUTE {
-        CS_EXECSEG_MAIN_BINARY
-    } else {
-        0
-    };
+    let exec_seg_flags =
+        if ctx.args.output_type == MH_EXECUTE { CS_EXECSEG_MAIN_BINARY } else { 0 };
     push_be64(&mut sig, exec_seg_flags); // exec segment flags
 
     sig.extend_from_slice(ident.as_bytes());
@@ -277,7 +278,9 @@ pub fn build_data_in_code<E: Arch>(ctx: &Context<E>) -> Vec<(u32, u16, u16)> {
             };
             let isec = &ctx.isecs[ctx.resolve_isec(isec as usize)];
             if isec.is_alive() {
-                let fileoff = ctx.chunk_header(isec.output_section().unwrap()).fileoff + isec.offset as u64 + off_in;
+                let fileoff = ctx.chunk_header(isec.output_section().unwrap()).fileoff
+                    + isec.offset as u64
+                    + off_in;
                 out.push((fileoff as u32, len, kind));
             }
         }
@@ -304,7 +307,11 @@ pub fn build_function_starts<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
                 && ctx.hdr_of(isec).segname() == "__TEXT"
                 && ctx.hdr_of(isec).sectname() == "__text"
             {
-                Some(ctx.chunk_header(isec.output_section().unwrap()).addr + isec.offset as u64 + sym.value)
+                Some(
+                    ctx.chunk_header(isec.output_section().unwrap()).addr
+                        + isec.offset as u64
+                        + sym.value,
+                )
             } else {
                 None
             }

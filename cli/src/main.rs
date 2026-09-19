@@ -3,7 +3,6 @@
 //! its own so that the compiler can build them in parallel, and a feature
 //! per target decides which of them are built in.
 
-
 // mold uses mimalloc on every platform (the C++ tree enables it by
 // default, mold-rust sets it as the global allocator): a linker
 // allocates and frees from many threads at once, and the system

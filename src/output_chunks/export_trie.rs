@@ -2,9 +2,9 @@
 
 use crate::arch::Arch;
 use crate::context::Context;
+use crate::input_files::FileId;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
-use crate::input_files::FileId;
 use crate::symbol::SymbolId;
 
 #[derive(Debug)]
@@ -45,7 +45,10 @@ impl Export {
         match self {
             Export::Addr { flags, addr } => uleb_len(flags as u64) + uleb_len(addr),
             Export::Reexport { ordinal, name } => {
-                uleb_len(EXPORT_SYMBOL_FLAGS_REEXPORT as u64) + uleb_len(ordinal as u64) + name.len() + 1
+                uleb_len(EXPORT_SYMBOL_FLAGS_REEXPORT as u64)
+                    + uleb_len(ordinal as u64)
+                    + name.len()
+                    + 1
             }
         }
     }
@@ -89,10 +92,7 @@ fn build_trie(names: &[(&'static str, Export)], depth: usize) -> TrieNode {
     let mut groups: Vec<&[(&'static str, Export)]> = Vec::new();
     while let Some(&(first, _)) = rest.first() {
         let b = first.as_bytes()[depth];
-        let n = rest
-            .iter()
-            .take_while(|(n, _)| n.as_bytes()[depth] == b)
-            .count();
+        let n = rest.iter().take_while(|(n, _)| n.as_bytes()[depth] == b).count();
         groups.push(&rest[..n]);
         rest = &rest[n..];
     }
@@ -131,10 +131,7 @@ fn uleb_len(mut val: u64) -> usize {
 /// and edges labeled with NUL-terminated string fragments pointing at
 /// child nodes by ULEB128 offset within the trie. Since offsets are
 /// variable-length, sizing iterates to a fixed point.
-pub fn encode_export_trie<E: Arch>(
-    ctx: &Context<E>,
-    sorted_globals: &[SymbolId],
-) -> Vec<u8> {
+pub fn encode_export_trie<E: Arch>(ctx: &Context<E>, sorted_globals: &[SymbolId]) -> Vec<u8> {
     use rayon::prelude::*;
     let base = ctx.args.pagezero_size;
 
@@ -146,8 +143,7 @@ pub fn encode_export_trie<E: Arch>(
         .par_iter()
         .filter_map(|&id| {
             let sym = &ctx.symbols[id];
-            let target = ctx.indirect_aliases.iter()
-                .find_map(|&(a, t)| (a == id).then_some(t));
+            let target = ctx.indirect_aliases.iter().find_map(|&(a, t)| (a == id).then_some(t));
             let same_name = target.is_some_and(|t| ctx.symbols[t].name() == sym.name());
             // Explicit reexports survive restrictions on local exports.
             if !same_name {
@@ -232,10 +228,7 @@ pub fn encode_export_trie<E: Arch>(
                     x
                 })
                 .collect();
-            node.children
-                .par_iter_mut()
-                .zip(bases)
-                .for_each(|((_, c), cb)| fill(c, cb, slots));
+            node.children.par_iter_mut().zip(bases).for_each(|((_, c), cb)| fill(c, cb, slots));
         } else {
             let mut b = base + 1;
             for (_, c) in &mut node.children {

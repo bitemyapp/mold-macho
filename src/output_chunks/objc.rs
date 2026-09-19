@@ -113,7 +113,11 @@ pub mod objc_methlist {
                 let field = addr + 8 + 12 * i as u64;
                 for (k, r) in [m.name, m.types, m.imp].into_iter().enumerate() {
                     let target = addr_of(r);
-                    let rel = if target == 0 { 0 } else { target.wrapping_sub(field + 4 * k as u64) as i64 };
+                    let rel = if target == 0 {
+                        0
+                    } else {
+                        target.wrapping_sub(field + 4 * k as u64) as i64
+                    };
                     if rel != rel as i32 as i64 {
                         crate::fatal!("relative method list entry out of range");
                     }

@@ -31,11 +31,8 @@ impl MappedFile {
         static CACHE: std::sync::Mutex<
             Option<std::collections::HashMap<std::path::PathBuf, &'static MappedFile>>,
         > = std::sync::Mutex::new(None);
-        if let Some(&mf) = CACHE
-            .lock()
-            .unwrap()
-            .get_or_insert_with(std::collections::HashMap::new)
-            .get(path)
+        if let Some(&mf) =
+            CACHE.lock().unwrap().get_or_insert_with(std::collections::HashMap::new).get(path)
         {
             return Ok(mf);
         }
@@ -89,10 +86,6 @@ impl MappedFile {
 
     /// Creates a view of a slice of this file, for an archive member.
     pub fn slice(&'static self, name: String, data: &'static [u8]) -> &'static MappedFile {
-        Box::leak(Box::new(MappedFile {
-            name,
-            data,
-            parent: Some(self),
-        }))
+        Box::leak(Box::new(MappedFile { name, data, parent: Some(self) }))
     }
 }

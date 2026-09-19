@@ -24,8 +24,8 @@ use std::num::NonZeroU32;
 
 use crate::arch::Arch;
 use crate::context::Context;
-use crate::macho::*;
 use crate::input_files::FileId;
+use crate::macho::*;
 
 pub use output_section::{OutputSection, Tail, Thunk};
 
@@ -221,11 +221,7 @@ pub struct OutputSegment {
 
 impl OutputSegment {
     pub fn new(name: &'static str) -> OutputSegment {
-        OutputSegment {
-            name,
-            chunks: Vec::new(),
-            cmd: SegmentCommand::default(),
-        }
+        OutputSegment { name, chunks: Vec::new(), cmd: SegmentCommand::default() }
     }
 }
 
@@ -289,12 +285,8 @@ fn create_segment_cmd<E: Arch>(ctx: &Context<E>, seg: &OutputSegment) -> Vec<u8>
     cmd.cmd = LC_SEGMENT_64;
     cmd.segname = str_to_name(seg.name);
 
-    let sects: Vec<&ChunkHeader> = seg
-        .chunks
-        .iter()
-        .map(|&id| ctx.chunk_header(id))
-        .filter(|hdr| hdr.is_sect)
-        .collect();
+    let sects: Vec<&ChunkHeader> =
+        seg.chunks.iter().map(|&id| ctx.chunk_header(id)).filter(|hdr| hdr.is_sect).collect();
 
     cmd.nsects = sects.len() as u32;
     cmd.cmdsize = (size_of::<SegmentCommand>() + sects.len() * size_of::<MachSection>()) as u32;
@@ -496,11 +488,8 @@ fn create_id_dylib_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
 // single-string load command: a cmd/cmdsize header plus the offset of
 // an inline NUL-terminated string, padded to an 8-byte multiple.
 fn create_string_cmd(kind: u32, path: &str) -> Vec<u8> {
-    let cmd = DylinkerCommand {
-        cmd: kind,
-        cmdsize: 0,
-        nameoff: size_of::<DylinkerCommand>() as u32,
-    };
+    let cmd =
+        DylinkerCommand { cmd: kind, cmdsize: 0, nameoff: size_of::<DylinkerCommand>() as u32 };
     let mut buf = to_vec(&cmd);
     append_string(&mut buf, path);
     let size = buf.len() as u32;
@@ -653,7 +642,9 @@ pub fn copy_mach_header<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
     // weak definition, and on any image with weak-lookup binds.
     if ctx.symbols.syms.iter().any(|sym| match sym.file() {
         Some(FileId::Dylib(idx)) => {
-            idx != u32::MAX && sym.is_used() && ctx.dylibs[idx as usize].weak_exports.contains(sym.name())
+            idx != u32::MAX
+                && sym.is_used()
+                && ctx.dylibs[idx as usize].weak_exports.contains(sym.name())
         }
         _ => false,
     }) || ctx.chained_fixups.imports.iter().any(|&(id, _)| ctx.binds_weak_lookup(id))
@@ -669,7 +660,10 @@ pub fn copy_mach_header<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
         sym.is_weak_def()
             && sym.is_extern()
             && !sym.is_private_extern()
-            && sym.input_section().map(|i| i as usize).is_some_and(|isec| ctx.isecs[isec].is_alive())
+            && sym
+                .input_section()
+                .map(|i| i as usize)
+                .is_some_and(|isec| ctx.isecs[isec].is_alive())
     }) || (0..ctx.symbols.syms.len()).any(|i| ctx.overrides_weak_export(i as u32))
     {
         hdr.flags |= MH_WEAK_DEFINES;

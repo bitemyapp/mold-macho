@@ -103,7 +103,12 @@ pub trait Arch: Copy + Default + Send + Sync + 'static {
 
     /// Writes one range-extension thunk's entries. `addr` is the
     /// thunk's address and `buf` its bytes.
-    fn write_thunk(ctx: &Context<Self>, addr: u64, syms: &[crate::symbol::SymbolId], buf: &mut [u8]);
+    fn write_thunk(
+        ctx: &Context<Self>,
+        addr: u64,
+        syms: &[crate::symbol::SymbolId],
+        buf: &mut [u8],
+    );
 
     /// Converts raw relocation records of one input section into
     /// [`Reloc`]s. Mach-O encodes addends target-dependently: some are

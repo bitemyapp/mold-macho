@@ -6,10 +6,10 @@ use crate::arch::Arch;
 use crate::arch::RelocClass;
 use crate::context::Context;
 use crate::fatal;
-use crate::passes::file_display;
+use crate::input_files::FileId;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
-use crate::input_files::FileId;
+use crate::passes::file_display;
 use crate::symbol::SymbolId;
 
 #[derive(Debug)]
@@ -201,10 +201,7 @@ pub fn build_chained_fixups<E: Arch>(ctx: &Context<E>) -> ChainedFixups {
             }
             _ => {
                 let ordinal = ordinal_bits(16);
-                push64(
-                    &mut buf,
-                    ordinal | ((weak as u64) << 16) | ((name_offs[i] as u64) << 32),
-                );
+                push64(&mut buf, ordinal | ((weak as u64) << 16) | ((name_offs[i] as u64) << 32));
                 push64(&mut buf, addend);
             }
         }
@@ -291,7 +288,9 @@ pub fn write_fixup_chains<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
     }
 }
 
-pub fn collect_fixups<E: Arch>(ctx: &Context<E>) -> Vec<(u64, Option<crate::symbol::SymbolId>, u64)> {
+pub fn collect_fixups<E: Arch>(
+    ctx: &Context<E>,
+) -> Vec<(u64, Option<crate::symbol::SymbolId>, u64)> {
     use rayon::prelude::*;
 
     // Every subsection's fixups are independent; collect them on all
@@ -311,7 +310,8 @@ pub fn collect_fixups<E: Arch>(ctx: &Context<E>) -> Vec<(u64, Option<crate::symb
                 {
                     return None;
                 }
-                if ctx.reloc_target_sym(isec.file as usize, rel)
+                if ctx
+                    .reloc_target_sym(isec.file as usize, rel)
                     .is_some_and(|id| ctx.is_absolute_symbol(id) && !ctx.binds_at_runtime(id))
                 {
                     return None;
@@ -321,7 +321,8 @@ pub fn collect_fixups<E: Arch>(ctx: &Context<E>) -> Vec<(u64, Option<crate::symb
                 // unaligned address is unrepresentable. ld64 diagnoses
                 // the offending input section rather than the output.
                 if addr % 4 != 0 {
-                    fatal!("{}({},{}): unaligned base relocation",
+                    fatal!(
+                        "{}({},{}): unaligned base relocation",
                         file_display(&ctx.objs[isec.file as usize]),
                         ctx.hdr_of(isec).segname(),
                         ctx.hdr_of(isec).sectname()

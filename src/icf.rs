@@ -19,9 +19,9 @@ use std::hash::Hash;
 
 use crate::arch::Arch;
 use crate::context::Context;
+use crate::input_files::FileId;
 use crate::input_sections::RelocTarget;
 use crate::macho::*;
-use crate::input_files::FileId;
 
 /// A stable identifier for what a relocation edge points at.
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
@@ -287,12 +287,8 @@ pub fn icf_sections<E: Arch>(ctx: &mut Context<E>) {
                 continue;
             };
             if nlist.n_desc & N_WEAK_DEF != 0 {
-                let _ = weak_state[isec].compare_exchange(
-                    0,
-                    1,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                );
+                let _ =
+                    weak_state[isec].compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed);
             } else {
                 weak_state[isec].store(2, Ordering::Relaxed);
             }
@@ -323,10 +319,8 @@ pub fn icf_sections<E: Arch>(ctx: &mut Context<E>) {
     };
 
     let __t = std::time::Instant::now();
-    let candidates: Vec<usize> = (0..ctx.isecs.len())
-        .into_par_iter()
-        .filter(|&i| is_candidate(ctx, i))
-        .collect();
+    let candidates: Vec<usize> =
+        (0..ctx.isecs.len()).into_par_iter().filter(|&i| is_candidate(ctx, i)).collect();
     if candidates.len() < 2 {
         return;
     }
@@ -457,7 +451,9 @@ pub fn icf_sections<E: Arch>(ctx: &mut Context<E>) {
             let isec = &ctx.isecs[id];
             let mut i = edge_indices[vertex] as usize;
             for rel in ctx.isec_relocs(id) {
-                if let Edge::Candidate(c) = edge_of(ctx, isec.file as usize, rel.target(), rel.addend).0 {
+                if let Edge::Candidate(c) =
+                    edge_of(ctx, isec.file as usize, rel.target(), rel.addend).0
+                {
                     // SAFETY: this vertex alone owns its prefix-sum range.
                     unsafe { *out.0.add(i) = c as u32 };
                     i += 1;
@@ -490,8 +486,7 @@ pub fn icf_sections<E: Arch>(ctx: &mut Context<E>) {
                     // into a tree of depth n.
                     let mut h = SipHash13_128::new(&KEY);
                     h.update_digest(cur[i]);
-                    for &c in &edge_values[edge_indices[i] as usize..edge_indices[i + 1] as usize]
-                    {
+                    for &c in &edge_values[edge_indices[i] as usize..edge_indices[i + 1] as usize] {
                         h.update_digest(cur[c as usize]);
                     }
                     h.finish()
@@ -520,10 +515,8 @@ pub fn icf_sections<E: Arch>(ctx: &mut Context<E>) {
     // non-leaders onto it. The converged 128-bit digests are the
     // equivalence classes, folded directly, as mold does; debug builds
     // re-verify byte equality as an assertion.
-    let leaders: Vec<u32> = (0..candidates.len())
-        .into_par_iter()
-        .map(|i| map.find(hashes[i]))
-        .collect();
+    let leaders: Vec<u32> =
+        (0..candidates.len()).into_par_iter().map(|i| map.find(hashes[i])).collect();
 
     #[cfg(debug_assertions)]
     {

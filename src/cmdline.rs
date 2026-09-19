@@ -447,33 +447,27 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             }
             "-syslibroot" => args.syslibroot.push(next_arg(&mut i).to_string()),
             "-L" => args.library_paths.push(next_arg(&mut i).to_string()),
-            "-l" => args
-                .inputs
-                .push(InputArg::Lib(next_arg(&mut i).to_string(), false)),
-            "-framework" => args
-                .inputs
-                .push(InputArg::Framework(next_arg(&mut i).to_string(), false)),
-            "-weak_framework" => args
-                .inputs
-                .push(InputArg::Framework(next_arg(&mut i).to_string(), true)),
-            "-reexport_framework" => args
-                .inputs
-                .push(InputArg::ReexportFramework(next_arg(&mut i).to_string())),
-            "-needed_framework" => args
-                .inputs
-                .push(InputArg::NeededFramework(next_arg(&mut i).to_string())),
-            "-needed_library" => args
-                .inputs
-                .push(InputArg::NeededFile(next_arg(&mut i).to_string())),
-            "-weak_library" => args
-                .inputs
-                .push(InputArg::WeakFile(next_arg(&mut i).to_string())),
-            "-reexport_library" => args
-                .inputs
-                .push(InputArg::ReexportFile(next_arg(&mut i).to_string())),
-            "-sub_library" => args
-                .inputs
-                .push(InputArg::ReexportLib(next_arg(&mut i).to_string())),
+            "-l" => args.inputs.push(InputArg::Lib(next_arg(&mut i).to_string(), false)),
+            "-framework" => {
+                args.inputs.push(InputArg::Framework(next_arg(&mut i).to_string(), false))
+            }
+            "-weak_framework" => {
+                args.inputs.push(InputArg::Framework(next_arg(&mut i).to_string(), true))
+            }
+            "-reexport_framework" => {
+                args.inputs.push(InputArg::ReexportFramework(next_arg(&mut i).to_string()))
+            }
+            "-needed_framework" => {
+                args.inputs.push(InputArg::NeededFramework(next_arg(&mut i).to_string()))
+            }
+            "-needed_library" => {
+                args.inputs.push(InputArg::NeededFile(next_arg(&mut i).to_string()))
+            }
+            "-weak_library" => args.inputs.push(InputArg::WeakFile(next_arg(&mut i).to_string())),
+            "-reexport_library" => {
+                args.inputs.push(InputArg::ReexportFile(next_arg(&mut i).to_string()))
+            }
+            "-sub_library" => args.inputs.push(InputArg::ReexportLib(next_arg(&mut i).to_string())),
             "-filelist" => {
                 // A file listing one input path per line, optionally
                 // with a directory prefix after a comma.
@@ -542,9 +536,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
                 }
                 treatment => fatal!("-undefined: unsupported treatment: {treatment}"),
             },
-            "-U" => args
-                .allowed_undefined
-                .push(next_arg(&mut i).to_string()),
+            "-U" => args.allowed_undefined.push(next_arg(&mut i).to_string()),
             "-w" => args.suppress_warnings = true,
             "-fatal_warnings" => args.fatal_warnings = true,
             "-demangle" => args.demangle = true,
@@ -558,14 +550,10 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             "-bind_at_load" => args.bind_at_load = true,
             "-application_extension" => args.application_extension = true,
             "-no_application_extension" => args.application_extension = false,
-            "-add_ast_path" => args
-                .add_ast_paths
-                .push(next_arg(&mut i).to_string()),
+            "-add_ast_path" => args.add_ast_paths.push(next_arg(&mut i).to_string()),
             "-S" => args.strip_debug = true,
             "-all_load" => args.all_load = true,
-            "-u" => args
-                .forced_undefined
-                .push(next_arg(&mut i).to_string()),
+            "-u" => args.forced_undefined.push(next_arg(&mut i).to_string()),
             "-exported_symbol" => args
                 .exported_symbols
                 .get_or_insert_with(Vec::new)
@@ -579,9 +567,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
                     Err(_) => fatal!("cannot read -exported_symbols_list: {path}"),
                 }
             }
-            "-unexported_symbol" => args
-                .unexported_symbols
-                .push(next_arg(&mut i).to_string()),
+            "-unexported_symbol" => args.unexported_symbols.push(next_arg(&mut i).to_string()),
             "-unexported_symbols_list" => {
                 let path = next_arg(&mut i).to_string();
                 match std::fs::read_to_string(&path) {
@@ -596,8 +582,8 @@ pub fn parse_args(cmdline: &[String]) -> Args {
                 let names = symbol_list(&text);
                 // Exact names force a reference even if no object
                 // mentions them. Patterns only match existing symbols.
-                args.forced_undefined.extend(names.iter()
-                    .filter(|name| !name.contains(['*', '?', '['])).cloned());
+                args.forced_undefined
+                    .extend(names.iter().filter(|name| !name.contains(['*', '?', '['])).cloned());
                 args.reexported_symbols.extend(names);
             }
             // The -dylib_ spellings are the older names ld64 still
@@ -611,10 +597,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             // ld64 prints its version banner to stdout and continues
             // with the link.
             "-v" => {
-                println!(
-                    "mold-macho {} (compatible with Apple ld64)",
-                    env!("CARGO_PKG_VERSION")
-                );
+                println!("mold-macho {} (compatible with Apple ld64)", env!("CARGO_PKG_VERSION"));
                 version_shown = true;
             }
             // Xcode's build system runs `ld -version_details` before the
@@ -633,9 +616,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             }
             "-noall_load" => args.all_load = false,
             "-ObjC" => args.load_objc = true,
-            "-force_load" => args
-                .inputs
-                .push(InputArg::ForceLoad(next_arg(&mut i).to_string())),
+            "-force_load" => args.inputs.push(InputArg::ForceLoad(next_arg(&mut i).to_string())),
 
             // The default library search behavior already matches
             // -search_paths_first: each path is tried for both a dylib
@@ -650,9 +631,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             "--print-dependencies" => args.print_dependencies = true,
             "-why_load" | "-whyload" => args.why_load = true,
             "-why_live" => args.why_live.push(next_arg(&mut i).to_string()),
-            "-allowable_client" => {
-                args.allowable_clients.push(next_arg(&mut i).to_string())
-            }
+            "-allowable_client" => args.allowable_clients.push(next_arg(&mut i).to_string()),
             "-client_name" => args.client_name = Some(next_arg(&mut i).to_string()),
             "-t" => args.trace = true,
             "-ignore_optimization_hints" => args.ignore_optimization_hints = true,
@@ -665,9 +644,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             }
             "-non_global_symbols_keep_list" => {
                 let path = next_arg(&mut i);
-                args.local_keep_list
-                    .get_or_insert_with(Vec::new)
-                    .extend(read_symbol_list(path));
+                args.local_keep_list.get_or_insert_with(Vec::new).extend(read_symbol_list(path));
             }
             "-sectalign" => {
                 let seg = next_arg(&mut i).to_string();
@@ -703,9 +680,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
                     }
                 }
             }
-            "-executable_path" => {
-                args.executable_path = Some(next_arg(&mut i).to_string())
-            }
+            "-executable_path" => args.executable_path = Some(next_arg(&mut i).to_string()),
 
             // Reserve enough header padding that install_name_tool can
             // grow install names in place.
@@ -745,19 +720,14 @@ pub fn parse_args(cmdline: &[String]) -> Args {
             // deterministic, so -reproducible has nothing to switch on.
             // -debug_variant silences ld64's warnings that only matter
             // for binaries shipped to customers; there are none here.
-            "-reproducible" | "-debug_variant" | "-O0" | "-O1" | "-O2" | "-O3"
-            | "-Os" | "-Oz" => {}
+            "-reproducible" | "-debug_variant" | "-O0" | "-O1" | "-O2" | "-O3" | "-Os" | "-Oz" => {}
 
             "-lto_library" => args.lto_library = Some(next_arg(&mut i).to_string()),
 
-            "-dependency_info" => {
-                args.dependency_info = Some(next_arg(&mut i).to_string())
-            }
+            "-dependency_info" => args.dependency_info = Some(next_arg(&mut i).to_string()),
 
             // Ignored options with an argument
-            "-object_path_lto" => {
-                args.object_path_lto = Some(next_arg(&mut i).to_string())
-            }
+            "-object_path_lto" => args.object_path_lto = Some(next_arg(&mut i).to_string()),
 
             // Ignored options with an argument
             "-mllvm" => {
@@ -800,8 +770,7 @@ pub fn parse_args(cmdline: &[String]) -> Args {
     // reserves the low 4 GiB against NULL dereferences.
     if args.output_type != MH_EXECUTE {
         if args.explicit_pagezero {
-            fatal!("-pagezero_size option can only be used when linking a main executable"
-            );
+            fatal!("-pagezero_size option can only be used when linking a main executable");
         }
         args.pagezero_size = 0;
     }

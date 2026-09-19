@@ -55,11 +55,7 @@ pub fn has_error() -> bool {
 }
 
 fn emit(prefix_mono: &str, prefix_color: &str, msg: fmt::Arguments) {
-    let prefix = if COLOR.load(Ordering::Relaxed) {
-        prefix_color
-    } else {
-        prefix_mono
-    };
+    let prefix = if COLOR.load(Ordering::Relaxed) { prefix_color } else { prefix_mono };
     let text = format!("{prefix}{msg}\n");
     let _guard = OUTPUT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _ = io::stderr().write_all(text.as_bytes());

@@ -58,10 +58,7 @@ fn write_add_ldst(loc: &mut [u8], val: u64) {
     // misaligned target. Silently dropping the low bits would load a
     // neighboring slot.
     if scale > 0 && val & ((1u64 << scale) - 1) != 0 {
-        fatal!(
-            "PAGEOFF12 target {val:#x} is not aligned to {}",
-            1u64 << scale
-        );
+        fatal!("PAGEOFF12 target {val:#x} is not aligned to {}", 1u64 << scale);
     }
 
     // Bits [21:10] hold the 12-bit immediate. Compilers usually leave
@@ -162,8 +159,7 @@ impl Arch for Arm64 {
             // SAFETY: every hint writes within its object's own
             // subsections; different objects' subsections are
             // disjoint ranges of the output.
-            let buf =
-                unsafe { std::slice::from_raw_parts_mut(bufp.0, buf_len) };
+            let buf = unsafe { std::slice::from_raw_parts_mut(bufp.0, buf_len) };
             if !obj.is_alive {
                 return;
             }
@@ -186,8 +182,7 @@ impl Arch for Arm64 {
                         hdr.addr + isec.offset as u64 + off,
                     ));
                 }
-                let insn =
-                    |buf: &[u8], i: usize| read32(&buf[locs[i].0..]);
+                let insn = |buf: &[u8], i: usize| read32(&buf[locs[i].0..]);
                 let put = |buf: &mut [u8], i: usize, v: u32| {
                     write32(&mut buf[locs[i].0..locs[i].0 + 4], v)
                 };
@@ -214,18 +209,14 @@ impl Arch for Arm64 {
                         let (a, l) = (insn(buf, 0), insn(buf, 1));
                         if is_adrp(a) && (l >> 5) & 0x1f == a & 0x1f {
                             if let Some(size) = ldr_size(l) {
-                                let target = adrp_target(a, locs[0].1)
-                                    + (((l >> 10) & 0xfff) as u64) * size;
-                                if size == 8
-                                    && target % 4 == 0
-                                    && in_adr_range(target, locs[1].1)
-                                {
+                                let target =
+                                    adrp_target(a, locs[0].1) + (((l >> 10) & 0xfff) as u64) * size;
+                                if size == 8 && target % 4 == 0 && in_adr_range(target, locs[1].1) {
                                     put(buf, 0, NOP);
                                     put(buf, 1, make_ldr_lit(target, locs[1].1, l & 0x1f, size));
                                 }
                             } else if *kind == 8 && is_add(l) {
-                                let target =
-                                    adrp_target(a, locs[0].1) + ((l >> 10) & 0xfff) as u64;
+                                let target = adrp_target(a, locs[0].1) + ((l >> 10) & 0xfff) as u64;
                                 if in_adr_range(target, locs[1].1) {
                                     put(buf, 0, NOP);
                                     put(buf, 1, make_adr(target, locs[1].1, l & 0x1f));
@@ -256,10 +247,7 @@ impl Arch for Arm64 {
                         if let Some(size) = ldr_size(l) {
                             if (l >> 5) & 0x1f == d & 0x1f {
                                 let target = base + (((l >> 10) & 0xfff) as u64) * size;
-                                if size == 8
-                                    && target % 4 == 0
-                                    && in_adr_range(target, locs[2].1)
-                                {
+                                if size == 8 && target % 4 == 0 && in_adr_range(target, locs[2].1) {
                                     put(buf, 0, NOP);
                                     put(buf, 1, NOP);
                                     put(buf, 2, make_ldr_lit(target, locs[2].1, l & 0x1f, size));
@@ -284,9 +272,7 @@ impl Arch for Arm64 {
         use crate::arch::RelocClass;
         match r_type {
             ARM64_RELOC_BRANCH26 => RelocClass::Branch,
-            ARM64_RELOC_GOT_LOAD_PAGE21 | ARM64_RELOC_GOT_LOAD_PAGEOFF12 => {
-                RelocClass::GotLoad
-            }
+            ARM64_RELOC_GOT_LOAD_PAGE21 | ARM64_RELOC_GOT_LOAD_PAGEOFF12 => RelocClass::GotLoad,
             ARM64_RELOC_POINTER_TO_GOT => RelocClass::Got,
             ARM64_RELOC_TLVP_LOAD_PAGE21 | ARM64_RELOC_TLVP_LOAD_PAGEOFF12 => RelocClass::Tlv,
             _ => RelocClass::Plain,
@@ -355,7 +341,12 @@ impl Arch for Arm64 {
         }
     }
 
-    fn write_thunk(ctx: &Context<Self>, addr: u64, syms: &[crate::symbol::SymbolId], buf: &mut [u8]) {
+    fn write_thunk(
+        ctx: &Context<Self>,
+        addr: u64,
+        syms: &[crate::symbol::SymbolId],
+        buf: &mut [u8],
+    ) {
         for (i, &sym) in syms.iter().enumerate() {
             let ent = &mut buf[i * 12..];
             let ent_addr = addr + i as u64 * 12;
@@ -482,7 +473,8 @@ impl Arch for Arm64 {
                         // rejects one that does not fit.
                         let val = s.wrapping_add_signed(a);
                         if val > u32::MAX as u64 {
-                            fatal!("{}: 32-bit absolute address out of range ({val:#x})",
+                            fatal!(
+                                "{}: 32-bit absolute address out of range ({val:#x})",
                                 ctx.objs[obj].mf.name
                             );
                         }
@@ -532,11 +524,8 @@ impl Arch for Arm64 {
                 // descriptor's page and the ldr becomes an add.
                 ARM64_RELOC_TLVP_LOAD_PAGE21 => {
                     let id = ctx.reloc_target_sym(obj, r).unwrap();
-                    let target = if ctx.symbols[id].is_imported() {
-                        ctx.sym_tlv_ptr_addr(id)
-                    } else {
-                        s
-                    };
+                    let target =
+                        if ctx.symbols[id].is_imported() { ctx.sym_tlv_ptr_addr(id) } else { s };
                     let val = read32(loc) | page_offset(target.wrapping_add_signed(a), p);
                     write32(loc, val);
                 }
@@ -568,11 +557,7 @@ impl Arch for Arm64 {
                 // "add Xn, Xm, #pageoff".
                 ARM64_RELOC_GOT_LOAD_PAGE21 => {
                     let id = ctx.reloc_target_sym(obj, r).unwrap();
-                    let target = if !ctx.can_relax_got(id) {
-                        ctx.sym_got_addr(id)
-                    } else {
-                        s
-                    };
+                    let target = if !ctx.can_relax_got(id) { ctx.sym_got_addr(id) } else { s };
                     let val = read32(loc) | page_offset(target.wrapping_add_signed(a), p);
                     write32(loc, val);
                 }

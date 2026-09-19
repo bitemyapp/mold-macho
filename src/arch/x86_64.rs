@@ -166,8 +166,7 @@ impl Arch for X86_64 {
                 _ => fatal!("{file_name}: bad relocation size"),
             };
             let addend = embedded + reloc_bias(r.r_type());
-            let is_subtracted =
-                i > 0 && rels[i - 1].r_type() == X86_64_RELOC_SUBTRACTOR;
+            let is_subtracted = i > 0 && rels[i - 1].r_type() == X86_64_RELOC_SUBTRACTOR;
 
             let (target, addend) = if r.is_extern() {
                 (RelocTarget::Sym(r.r_symbolnum() as u32), addend)
@@ -222,9 +221,7 @@ impl Arch for X86_64 {
             if matches!(r.r_type, X86_64_RELOC_GOT_LOAD | X86_64_RELOC_TLV)
                 && r.offset >= 2
                 && buf[r.offset as usize - 2] == 0x8b
-                && ctx
-                    .reloc_target_sym(obj, r)
-                    .is_some_and(|id| ctx.can_relax_got(id))
+                && ctx.reloc_target_sym(obj, r).is_some_and(|id| ctx.can_relax_got(id))
             {
                 buf[r.offset as usize - 2] = 0x8d;
                 relaxed_got_load = true;
@@ -248,7 +245,8 @@ impl Arch for X86_64 {
                         // rejects one that does not fit.
                         let val = s.wrapping_add_signed(a);
                         if val > u32::MAX as u64 {
-                            fatal!("{}: 32-bit absolute address out of range ({val:#x})",
+                            fatal!(
+                                "{}: 32-bit absolute address out of range ({val:#x})",
                                 ctx.objs[obj].mf.name
                             );
                         }
@@ -279,7 +277,9 @@ impl Arch for X86_64 {
                     let val = s.wrapping_add_signed(a).wrapping_sub(p + 4);
                     write32(loc, val as u32);
                 }
-                X86_64_RELOC_SIGNED | X86_64_RELOC_SIGNED_1 | X86_64_RELOC_SIGNED_2
+                X86_64_RELOC_SIGNED
+                | X86_64_RELOC_SIGNED_1
+                | X86_64_RELOC_SIGNED_2
                 | X86_64_RELOC_SIGNED_4 => {
                     debug_assert!(r.size == 4);
                     let val = s

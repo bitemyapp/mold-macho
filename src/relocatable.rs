@@ -20,11 +20,11 @@ use crate::arch::Arch;
 use crate::context::Context;
 use crate::error;
 use crate::fatal;
+use crate::input_files::FileId;
 use crate::input_sections::RelocTarget;
 use crate::macho::*;
 use crate::output_chunks::{ChunkId, OutputSectionId};
 use crate::output_file;
-use crate::input_files::FileId;
 use crate::util::align_to;
 
 /// ld64's section order in a -r output, measured with ld-prime:
@@ -151,7 +151,13 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
     let mut cu_slot = None;
     if !cu_kept.is_empty() {
         cu_slot = Some(extras.len());
-        extras.push(new_extra("__LD", "__compact_unwind", S_ATTR_DEBUG, 3, 32 * cu_kept.len() as u64));
+        extras.push(new_extra(
+            "__LD",
+            "__compact_unwind",
+            S_ATTR_DEBUG,
+            3,
+            32 * cu_kept.len() as u64,
+        ));
     }
 
     // __TEXT,__eh_frame: every input CIE and FDE whose function
@@ -175,7 +181,10 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
             per_obj.entry(fde.obj).or_default().push((fde.input_addr, EhRec::Fde(f)));
             if cies_used.insert(fde.cie as usize) {
                 let cie = &ctx.cies[fde.cie as usize];
-                per_obj.entry(cie.obj).or_default().push((cie.input_addr, EhRec::Cie(fde.cie as usize)));
+                per_obj
+                    .entry(cie.obj)
+                    .or_default()
+                    .push((cie.input_addr, EhRec::Cie(fde.cie as usize)));
             }
         }
         let mut objs: Vec<u32> = per_obj.keys().copied().collect();
@@ -280,7 +289,9 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
         match sym.input_section() {
             Some(isec) => {
                 let isec = &ctx.isecs[ctx.resolve_isec(isec as usize)];
-                ctx.chunk_header(isec.output_section().unwrap()).addr + isec.offset as u64 + sym.value
+                ctx.chunk_header(isec.output_section().unwrap()).addr
+                    + isec.offset as u64
+                    + sym.value
             }
             None => sym.value,
         }
@@ -291,9 +302,8 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
     // hold it (N_OSO) and where their symbols landed, and a later link
     // carries the notes through.
     if !ctx.args.strip_debug {
-        let cwd = std::env::current_dir()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        let cwd =
+            std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
         for obj_idx in 0..ctx.objs.len() {
             for (name, mut ent, sym) in crate::passes::plan_object_stabs(ctx, obj_idx, &cwd) {
                 if let Some(id) = sym {
@@ -453,8 +463,9 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
             }
             let is_label = sym.name().starts_with('l') || sym.name().starts_with('L');
             if is_label && !referenced.contains(&sym_id) {
-                let others = named_at.get(&(obj_idx, nlist.n_sect, nlist.n_value)).copied().unwrap_or(0)
-                    - u32::from(!sym.name().starts_with("ltmp"));
+                let others =
+                    named_at.get(&(obj_idx, nlist.n_sect, nlist.n_value)).copied().unwrap_or(0)
+                        - u32::from(!sym.name().starts_with("ltmp"));
                 if others > 0 {
                     continue;
                 }
@@ -619,7 +630,13 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
         // makes PLCrashReporter's template instantiations local; ours
         // stayed exported after the -r prelink lost the marker).
         let mut n_desc = desc_of.get(&(i as u32)).copied().unwrap_or(0)
-            & (N_WEAK_DEF | N_WEAK_REF | N_ALT_ENTRY | N_NO_DEAD_STRIP | N_SYMBOL_RESOLVER | N_COLD_FUNC | REFERENCED_DYNAMICALLY);
+            & (N_WEAK_DEF
+                | N_WEAK_REF
+                | N_ALT_ENTRY
+                | N_NO_DEAD_STRIP
+                | N_SYMBOL_RESOLVER
+                | N_COLD_FUNC
+                | REFERENCED_DYNAMICALLY);
         if sym.is_weak_def() {
             n_desc |= N_WEAK_DEF;
         }
@@ -709,10 +726,8 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                     fatal!("-r: unwind personality lost: {}", ctx.symbols[p]);
                 };
                 cu_data.extend_from_slice(&0u64.to_le_bytes());
-                cu_relocs.push(MachRel {
-                    r_address: entry + 16,
-                    bits: symnum | (3 << 25) | (1 << 27),
-                });
+                cu_relocs
+                    .push(MachRel { r_address: entry + 16, bits: symnum | (3 << 25) | (1 << 27) });
             }
             None => cu_data.extend_from_slice(&0u64.to_le_bytes()),
         }
@@ -730,8 +745,9 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                     }
                     None => {
                         let l = &ctx.isecs[lsda];
-                        let lsda_addr =
-                            ctx.chunk_header(l.output_section().unwrap()).addr + l.offset as u64 + off as u64;
+                        let lsda_addr = ctx.chunk_header(l.output_section().unwrap()).addr
+                            + l.offset as u64
+                            + off as u64;
                         cu_data.extend_from_slice(&lsda_addr.to_le_bytes());
                         cu_relocs.push(MachRel {
                             r_address: entry + 24,
@@ -836,11 +852,18 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                             Some(&lsda_sym) => {
                                 let a = -(pos as i64);
                                 match size {
-                                    8 => eh_data[o + pos..o + pos + 8].copy_from_slice(&a.to_le_bytes()),
+                                    8 => eh_data[o + pos..o + pos + 8]
+                                        .copy_from_slice(&a.to_le_bytes()),
                                     _ => eh_data[o + pos..o + pos + 4]
                                         .copy_from_slice(&(a as i32).to_le_bytes()),
                                 }
-                                pair(&mut eh_relocs, off + pos as u32, if size == 8 { 3 } else { 2 }, me, lsda_sym);
+                                pair(
+                                    &mut eh_relocs,
+                                    off + pos as u32,
+                                    if size == 8 { 3 } else { 2 },
+                                    me,
+                                    lsda_sym,
+                                );
                             }
                             None => {
                                 let l = &ctx.isecs[lsda];
@@ -877,7 +900,8 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                     RelocTarget::Sym(idx) => {
                         let sym_id = ctx.objs[isec.file as usize].symbols[idx as usize];
                         let Some(&symnum) = index_of_sym.get(&sym_id) else {
-                            fatal!("-r: cannot re-emit relocation against {}",
+                            fatal!(
+                                "-r: cannot re-emit relocation against {}",
                                 ctx.symbols[sym_id].name()
                             );
                         };
@@ -1003,8 +1027,7 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
             let val = target.wrapping_sub(extra.addr + cell as u64);
             let cell = cell as usize;
             match size {
-                4 => extra.data[cell..cell + 4]
-                    .copy_from_slice(&(val as u32).to_le_bytes()),
+                4 => extra.data[cell..cell + 4].copy_from_slice(&(val as u32).to_le_bytes()),
                 8 => extra.data[cell..cell + 8].copy_from_slice(&val.to_le_bytes()),
                 _ => unreachable!(),
             }
@@ -1073,11 +1096,7 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                     size: chunk.hdr.size,
                     offset: sect_offsets[i] as u32,
                     p2align: chunk.hdr.p2align,
-                    reloff: if sect_relocs[i].is_empty() {
-                        0
-                    } else {
-                        reloff[i] as u32
-                    },
+                    reloff: if sect_relocs[i].is_empty() { 0 } else { reloff[i] as u32 },
                     nreloc: sect_relocs[i].len() as u32,
                     flags: chunk.hdr.flags,
                     reserved1: 0,
@@ -1177,8 +1196,9 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                 };
                 let target = ctx.resolve_isec(target as usize);
                 let t = &ctx.isecs[target];
-                let target_addr =
-                    ctx.chunk_header(t.output_section().unwrap()).addr + t.offset as u64 + rel.addend as u64;
+                let target_addr = ctx.chunk_header(t.output_section().unwrap()).addr
+                    + t.offset as u64
+                    + rel.addend as u64;
                 let loc = dst + rel.offset as usize;
                 if let Some(e) = atom_target(target, rel.addend) {
                     // Now a relocation against the atom's symbol: the
@@ -1198,8 +1218,7 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                 if rel.r_type == E::RELOC_UNSIGNED && !rel.is_pcrel {
                     match rel.size {
                         8 => buf[loc..loc + 8].copy_from_slice(&target_addr.to_le_bytes()),
-                        4 => buf[loc..loc + 4]
-                            .copy_from_slice(&(target_addr as u32).to_le_bytes()),
+                        4 => buf[loc..loc + 4].copy_from_slice(&(target_addr as u32).to_le_bytes()),
                         _ => {}
                     }
                 } else if rel.is_pcrel {
@@ -1209,7 +1228,8 @@ pub fn link<E: Arch>(ctx: &mut Context<E>) {
                         + rel.offset as u64;
                     let val = target_addr
                         .wrapping_sub(here + 4)
-                        .wrapping_sub(E::reloc_bias(rel.r_type) as u64) as u32;
+                        .wrapping_sub(E::reloc_bias(rel.r_type) as u64)
+                        as u32;
                     if rel.size == 4 {
                         buf[loc..loc + 4].copy_from_slice(&val.to_le_bytes());
                     }

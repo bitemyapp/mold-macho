@@ -62,7 +62,8 @@ pub fn encode_unwind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<SymbolId>)
         .unwind_records
         .par_iter()
         .filter(|rec| {
-            ctx.isecs[rec.isec as usize].is_alive() && ctx.isecs[rec.isec as usize].replacement == crate::input_sections::NO_REPLACEMENT
+            ctx.isecs[rec.isec as usize].is_alive()
+                && ctx.isecs[rec.isec as usize].replacement == crate::input_sections::NO_REPLACEMENT
         })
         .cloned()
         .collect();
@@ -71,8 +72,9 @@ pub fn encode_unwind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<SymbolId>)
     }
 
     let base = ctx.args.pagezero_size;
-    let func_addr =
-        |r: &crate::input_files::UnwindRecord| ctx.isec_addr(r.isec as usize) + r.input_offset as u64;
+    let func_addr = |r: &crate::input_files::UnwindRecord| {
+        ctx.isec_addr(r.isec as usize) + r.input_offset as u64
+    };
 
     // Records synthesized from DWARF unwind info encode the FDE's
     // offset in __eh_frame in the low 24 bits.
@@ -127,12 +129,14 @@ pub fn encode_unwind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<SymbolId>)
     // way; a one-off encoding - every DWARF-mode one, with its FDE
     // offset - stays page-local.
     let common: Vec<(u32, usize)> = {
-        let mut freq: std::collections::HashMap<u32, (usize, usize)> = std::collections::HashMap::new();
+        let mut freq: std::collections::HashMap<u32, (usize, usize)> =
+            std::collections::HashMap::new();
         for (i, rec) in records.iter().enumerate() {
             let e = freq.entry(rec.encoding).or_insert((0, i));
             e.0 += 1;
         }
-        let mut all: Vec<(u32, usize, usize)> = freq.into_iter().map(|(e, (n, first))| (e, n, first)).collect();
+        let mut all: Vec<(u32, usize, usize)> =
+            freq.into_iter().map(|(e, (n, first))| (e, n, first)).collect();
         all.sort_by(|a, b| b.1.cmp(&a.1).then(a.2.cmp(&b.2)));
         all.into_iter().filter(|&(_, n, _)| n > 1).take(127).map(|(e, n, _)| (e, n)).collect()
     };
@@ -186,7 +190,12 @@ pub fn encode_unwind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<SymbolId>)
             pages.push(Page { start: end - n, end, compressed: true, encodings: encs });
             end -= n;
         } else {
-            pages.push(Page { start: end - regular, end, compressed: false, encodings: Vec::new() });
+            pages.push(Page {
+                start: end - regular,
+                end,
+                compressed: false,
+                encodings: Vec::new(),
+            });
             end -= regular;
         }
     }
@@ -255,7 +264,8 @@ pub fn encode_unwind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<SymbolId>)
                         Some(&i) => i,
                         None => {
                             common.len() as u32
-                                + page.encodings.iter().position(|&e| e == rec.encoding).unwrap() as u32
+                                + page.encodings.iter().position(|&e| e == rec.encoding).unwrap()
+                                    as u32
                         }
                     };
                     let entry = (func_addr(rec) - page_base) as u32 | enc_idx << 24;
@@ -273,11 +283,7 @@ pub fn encode_unwind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<SymbolId>)
                     push32(&mut page2, rec.encoding);
                 }
             }
-            PageOut {
-                page2,
-                lsda,
-                first: (func_addr(&span[0]) - base) as u32,
-            }
+            PageOut { page2, lsda, first: (func_addr(&span[0]) - base) as u32 }
         })
         .collect();
 

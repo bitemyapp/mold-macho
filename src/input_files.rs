@@ -158,7 +158,9 @@ pub fn find_subsec(
     }
     let id = subsecs[i - 1] as usize;
     let isec = &isecs[id as usize];
-    if addr < isec.input_addr as u64 + isec.size as u64 || (isec.size as u64 == 0 && addr == isec.input_addr as u64) {
+    if addr < isec.input_addr as u64 + isec.size as u64
+        || (isec.size as u64 == 0 && addr == isec.input_addr as u64)
+    {
         Some((id, addr - isec.input_addr as u64))
     } else {
         None
@@ -276,7 +278,9 @@ pub struct StagedObject {
 /// if it is unaligned or truncated (then the caller copies it).
 fn nlists_slice(data: &'static [u8], off: usize, n: usize) -> Option<&'static [NList]> {
     let bytes = n.checked_mul(size_of::<NList>())?;
-    if off.checked_add(bytes)? > data.len() || (data.as_ptr() as usize + off) % std::mem::align_of::<NList>() != 0 {
+    if off.checked_add(bytes)? > data.len()
+        || (data.as_ptr() as usize + off) % std::mem::align_of::<NList>() != 0
+    {
         return None;
     }
     // SAFETY: in bounds and aligned (checked above); NList is a
@@ -346,10 +350,7 @@ pub fn stage_object<E: Arch>(
     let hdr = MachHeader::read_from(data);
 
     if hdr.cputype != E::CPUTYPE {
-        fatal!("{}: incompatible CPU type: expected {}",
-            mf.name,
-            E::NAME
-        );
+        fatal!("{}: incompatible CPU type: expected {}", mf.name, E::NAME);
     }
 
     let mut isecs: Vec<InputSection> = Vec::new();
@@ -369,15 +370,17 @@ pub fn stage_object<E: Arch>(
             LC_SEGMENT_64 => {
                 let seg = SegmentCommand::read_from(&data[off..]);
                 for i in 0..seg.nsects as usize {
-                    let sect_off =
-                        off + size_of::<SegmentCommand>() + i * size_of::<MachSection>();
+                    let sect_off = off + size_of::<SegmentCommand>() + i * size_of::<MachSection>();
                     sect_hdrs.push(MachSection::read_from(&data[sect_off..]));
                 }
             }
             LC_SYMTAB => symtab_cmd = Some(SymtabCommand::read_from(&data[off..])),
             LC_DYSYMTAB => dysymtab_cmd = Some(DysymtabCommand::read_from(&data[off..])),
-            LC_BUILD_VERSION | LC_VERSION_MIN_MACOSX | LC_VERSION_MIN_IPHONEOS
-            | LC_VERSION_MIN_TVOS | LC_VERSION_MIN_WATCHOS => {
+            LC_BUILD_VERSION
+            | LC_VERSION_MIN_MACOSX
+            | LC_VERSION_MIN_IPHONEOS
+            | LC_VERSION_MIN_TVOS
+            | LC_VERSION_MIN_WATCHOS => {
                 platform_versions.push(PlatformVersion::read(lc.cmd, &data[off..], E::CPUTYPE));
             }
             LC_LINKER_OPTION => {
@@ -409,8 +412,7 @@ pub fn stage_object<E: Arch>(
                 // A stream of ULEB128 triples-and-more: kind, argument
                 // count, then that many instruction addresses.
                 let cmd = LinkEditDataCommand::read_from(&data[off..]);
-                let payload =
-                    &data[cmd.dataoff as usize..(cmd.dataoff + cmd.datasize) as usize];
+                let payload = &data[cmd.dataoff as usize..(cmd.dataoff + cmd.datasize) as usize];
                 let mut pos = 0;
                 while pos < payload.len() {
                     let kind = read_uleb_at(payload, &mut pos);
@@ -418,9 +420,7 @@ pub fn stage_object<E: Arch>(
                         break;
                     }
                     let count = read_uleb_at(payload, &mut pos);
-                    let addrs = (0..count)
-                        .map(|_| read_uleb_at(payload, &mut pos))
-                        .collect();
+                    let addrs = (0..count).map(|_| read_uleb_at(payload, &mut pos)).collect();
                     loh.push((kind as u8, addrs));
                 }
             }
@@ -444,7 +444,9 @@ pub fn stage_object<E: Arch>(
     if let Some(cmd) = symtab_cmd {
         nlists = match nlists_slice(data, cmd.symoff as usize, cmd.nsyms as usize) {
             Some(s) => std::borrow::Cow::Borrowed(s),
-            None => std::borrow::Cow::Owned(read_array(data, cmd.symoff as usize, cmd.nsyms as usize)),
+            None => {
+                std::borrow::Cow::Owned(read_array(data, cmd.symoff as usize, cmd.nsyms as usize))
+            }
         };
         strtab = validate_strtab(&data[cmd.stroff as usize..(cmd.stroff + cmd.strsize) as usize]);
     }
@@ -507,17 +509,14 @@ pub fn stage_object<E: Arch>(
         let mut points = std::mem::take(&mut split_points[i]);
         if is_literal(sect) {
             points.clear();
-            let contents =
-                &data[sect.offset as usize..(sect.offset as u64 + sect.size) as usize];
+            let contents = &data[sect.offset as usize..(sect.offset as u64 + sect.size) as usize];
             match sect.section_type() {
                 S_CSTRING_LITERALS => {
                     let mut start = 0;
                     while start < contents.len() {
                         points.push(sect.addr + start as u64);
                         let rest = &contents[start..];
-                        let p = unsafe {
-                            libc::memchr(rest.as_ptr() as *const _, 0, rest.len())
-                        };
+                        let p = unsafe { libc::memchr(rest.as_ptr() as *const _, 0, rest.len()) };
                         if p.is_null() {
                             fatal!("{}: malformed __cstring section", mf.name);
                         }
@@ -532,7 +531,9 @@ pub fn stage_object<E: Arch>(
                 // A literal-pointer section (__objc_selrefs) is one
                 // atom per pointer, as in ld64, so references to the
                 // same selector can be coalesced across objects.
-                S_LITERAL_POINTERS => points.extend((0..sect.size).step_by(8).map(|o| sect.addr + o)),
+                S_LITERAL_POINTERS => {
+                    points.extend((0..sect.size).step_by(8).map(|o| sect.addr + o))
+                }
                 // __cfstring: one 32-byte constant per record.
                 _ => points.extend((0..sect.size).step_by(32).map(|o| sect.addr + o)),
             }
@@ -654,54 +655,58 @@ pub fn stage_object<E: Arch>(
     }
 
     // Record symbol names; interning happens at integration.
-    let sym_names: Vec<&'static str> = nlists
-        .iter()
-        .map(|nlist| symbol_name(strtab, nlist))
-        .collect();
+    let sym_names: Vec<&'static str> =
+        nlists.iter().map(|nlist| symbol_name(strtab, nlist)).collect();
 
     let mut unwind = Vec::new();
     let mut cies = Vec::new();
     let mut fdes = Vec::new();
-    if let Some(hdr) = sect_hdrs
-        .iter()
-        .find(|s| s.segname() == "__LD" && s.sectname() == "__compact_unwind")
+    if let Some(hdr) =
+        sect_hdrs.iter().find(|s| s.segname() == "__LD" && s.sectname() == "__compact_unwind")
     {
         parse_compact_unwind::<E>(hdr, &isecs, &subsecs, &nlists, data, &mf.name, &mut unwind);
     }
 
-    if let Some(hdr) = sect_hdrs
-        .iter()
-        .find(|s| s.segname() == "__TEXT" && s.sectname() == "__eh_frame")
+    if let Some(hdr) =
+        sect_hdrs.iter().find(|s| s.segname() == "__TEXT" && s.sectname() == "__eh_frame")
     {
-        parse_eh_frame::<E>(hdr, &isecs, &subsecs, &nlists, data, &mf.name, &mut unwind, &mut cies,
-            &mut fdes, keep_all_fdes,
+        parse_eh_frame::<E>(
+            hdr,
+            &isecs,
+            &subsecs,
+            &nlists,
+            data,
+            &mf.name,
+            &mut unwind,
+            &mut cies,
+            &mut fdes,
+            keep_all_fdes,
         );
     }
     // A DWARF-mode record whose FDE never turned up describes nothing.
-    unwind.retain(|rec| rec.encoding & UNWIND_MODE_MASK != E::UNWIND_MODE_DWARF || rec.fde().is_some());
+    unwind.retain(|rec| {
+        rec.encoding & UNWIND_MODE_MASK != E::UNWIND_MODE_DWARF || rec.fde().is_some()
+    });
 
-    let objc_image_info = sect_hdrs
-        .iter()
-        .find(|s| s.sectname() == "__objc_imageinfo")
-        .map(|s| {
-            let off = s.offset as usize + 4;
-            u32::from_le_bytes(data[off..off + 4].try_into().unwrap())
-        });
-    let has_debug_info = sect_hdrs
-        .iter()
-        .any(|s| s.segname() == "__DWARF" && s.sectname() == "__debug_info");
+    let objc_image_info = sect_hdrs.iter().find(|s| s.sectname() == "__objc_imageinfo").map(|s| {
+        let off = s.offset as usize + 4;
+        u32::from_le_bytes(data[off..off + 4].try_into().unwrap())
+    });
+    let has_debug_info =
+        sect_hdrs.iter().any(|s| s.segname() == "__DWARF" && s.sectname() == "__debug_info");
 
-    let sym_hashes: Vec<u64> = nlists
-        .iter()
-        .zip(&sym_names)
-        .map(|(nlist, name)| {
-            if !nlist.is_stab() && nlist.is_extern() {
-                crate::symbol::hash_key(name)
-            } else {
-                0
-            }
-        })
-        .collect();
+    let sym_hashes: Vec<u64> =
+        nlists
+            .iter()
+            .zip(&sym_names)
+            .map(|(nlist, name)| {
+                if !nlist.is_stab() && nlist.is_extern() {
+                    crate::symbol::hash_key(name)
+                } else {
+                    0
+                }
+            })
+            .collect();
 
     StagedObject {
         mf,
@@ -827,9 +832,9 @@ pub fn integrate_objects<E: Arch>(
             // reloc arena (rel_offset/nrels stay object-local).
             for rel in &mut st.relocs {
                 if let crate::input_sections::RelocTarget::Section(local) = rel.target() {
-                    rel.set_target(
-                        crate::input_sections::RelocTarget::Section(base.isec as u32 + local),
-                        );
+                    rel.set_target(crate::input_sections::RelocTarget::Section(
+                        base.isec as u32 + local,
+                    ));
                 }
             }
             for sub in &mut st.subsecs {
@@ -890,24 +895,21 @@ pub fn integrate_objects<E: Arch>(
         unsafe impl Sync for SlotPtr {}
         let ptr = SlotPtr(ctx.symbols.syms.as_mut_ptr());
         let ptr = &ptr;
-        staged
-            .par_iter()
-            .zip(&bases)
-            .for_each(|(st, base)| {
-                let mut slot = base.locals;
-                let r = st.local_range();
-                for (nlist, name) in st.nlists[r.clone()].iter().zip(&st.sym_names[r]) {
-                    if nlist.is_stab() || !nlist.is_extern() {
-                        // SAFETY: [base.locals, base.locals+n) ranges
-                        // are disjoint across objects and lie within
-                        // the reserved capacity.
-                        unsafe {
-                            ptr.0.add(slot).write(crate::symbol::Symbol::new(name));
-                        }
-                        slot += 1;
+        staged.par_iter().zip(&bases).for_each(|(st, base)| {
+            let mut slot = base.locals;
+            let r = st.local_range();
+            for (nlist, name) in st.nlists[r.clone()].iter().zip(&st.sym_names[r]) {
+                if nlist.is_stab() || !nlist.is_extern() {
+                    // SAFETY: [base.locals, base.locals+n) ranges
+                    // are disjoint across objects and lie within
+                    // the reserved capacity.
+                    unsafe {
+                        ptr.0.add(slot).write(crate::symbol::Symbol::new(name));
                     }
+                    slot += 1;
                 }
-            });
+            }
+        });
         // SAFETY: every slot in old_len..old_len+total_locals was
         // initialized by exactly one object above.
         unsafe { ctx.symbols.syms.set_len(old_len + total_locals) };
@@ -1079,8 +1081,7 @@ pub fn parse_object<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile, aliv
 /// Loads the LTO plugin on first use.
 pub fn ensure_lto_plugin<E: Arch>(ctx: &mut Context<E>) -> crate::lto::Plugin {
     if ctx.lto_plugin.is_none() {
-        ctx.lto_plugin = Some(crate::lto::load_plugin(ctx.args.lto_library.as_deref(),
-        ));
+        ctx.lto_plugin = Some(crate::lto::load_plugin(ctx.args.lto_library.as_deref()));
     }
     ctx.lto_plugin.unwrap()
 }
@@ -1177,7 +1178,6 @@ fn validate_strtab(strtab: &'static [u8]) -> &'static [u8] {
     }
 }
 
-
 /// Sentinel for an absent index in `UnwindRecord` (no personality, no
 /// LSDA, no FDE).
 pub const UNWIND_NONE: u32 = u32::MAX;
@@ -1241,7 +1241,9 @@ fn parse_compact_unwind<E: Arch>(
 ) {
     let geo: Vec<(u64, u64, usize)> = subsecs
         .iter()
-        .map(|&id| (isecs[id as usize].input_addr as u64, isecs[id as usize].size as u64, id as usize))
+        .map(|&id| {
+            (isecs[id as usize].input_addr as u64, isecs[id as usize].size as u64, id as usize)
+        })
         .collect();
     let find_subsec = |addr: u64| -> Option<(usize, u32)> {
         let i = geo.partition_point(|&(start, _, _)| start <= addr);
@@ -1280,7 +1282,8 @@ fn parse_compact_unwind<E: Arch>(
                 data[off..off + 4].try_into().unwrap()
             }),
             personality_sym: UNWIND_NONE,
-            lsda_isec: UNWIND_NONE, lsda_off: 0,
+            lsda_isec: UNWIND_NONE,
+            lsda_off: 0,
             fde_idx: UNWIND_NONE,
         });
     }
@@ -1317,9 +1320,7 @@ fn parse_compact_unwind<E: Arch>(
                 } else {
                     // Resolve a section-relative reference back to the
                     // symbol at that address.
-                    nlists
-                        .iter()
-                        .position(|n| n.is_extern() && n.n_value == value)
+                    nlists.iter().position(|n| n.is_extern() && n.n_value == value)
                 };
                 let Some(sym) = sym else {
                     fatal!("{file_name}: __compact_unwind: unsupported personality");
@@ -1336,7 +1337,8 @@ fn parse_compact_unwind<E: Arch>(
                 let Some(lsda) = find_subsec(addr) else {
                     fatal!("{file_name}: __compact_unwind: bad LSDA reference");
                 };
-                records[idx].lsda_isec = lsda.0 as u32; records[idx].lsda_off = lsda.1;
+                records[idx].lsda_isec = lsda.0 as u32;
+                records[idx].lsda_off = lsda.1;
             }
             _ => fatal!("{file_name}: __compact_unwind: unsupported relocation"),
         }
@@ -1429,7 +1431,9 @@ fn parse_eh_frame<E: Arch>(
 ) {
     let geo: Vec<(u64, u64, usize)> = subsecs
         .iter()
-        .map(|&id| (isecs[id as usize].input_addr as u64, isecs[id as usize].size as u64, id as usize))
+        .map(|&id| {
+            (isecs[id as usize].input_addr as u64, isecs[id as usize].size as u64, id as usize)
+        })
         .collect();
     let find_local = |addr: u64| -> Option<(usize, u32)> {
         let i = geo.partition_point(|&(start, _, _)| start <= addr);
@@ -1443,8 +1447,7 @@ fn parse_eh_frame<E: Arch>(
             None
         }
     };
-    let mut contents =
-        data[hdr.offset as usize..(hdr.offset as u64 + hdr.size) as usize].to_vec();
+    let mut contents = data[hdr.offset as usize..(hdr.offset as u64 + hdr.size) as usize].to_vec();
     let rels: Vec<MachRel> = read_array(data, hdr.reloff as usize, hdr.nreloc as usize);
 
     // Pre-apply subtraction pairs so record contents become
@@ -1538,18 +1541,18 @@ fn parse_eh_frame<E: Arch>(
             match c {
                 b'L' => {
                     cie.lsda_size = match data[pos] & 0xf {
-                        0x3 => 4,  // DW_EH_PE_sdata4... actually udata4
-                        0xb => 4,  // DW_EH_PE_sdata4
-                        0x0 => 8,  // DW_EH_PE_absptr
-                        enc => fatal!("{file_name}: __eh_frame: unknown LSDA encoding: {enc:#x}"
-                        ),
+                        0x3 => 4, // DW_EH_PE_sdata4... actually udata4
+                        0xb => 4, // DW_EH_PE_sdata4
+                        0x0 => 8, // DW_EH_PE_absptr
+                        enc => fatal!("{file_name}: __eh_frame: unknown LSDA encoding: {enc:#x}"),
                     };
                     pos += 1;
                 }
                 b'P' => {
                     // DW_EH_PE_indirect | DW_EH_PE_pcrel | DW_EH_PE_sdata4
                     if data[pos] != 0x9b {
-                        fatal!("{file_name}: __eh_frame: unknown personality encoding: {:#x}",
+                        fatal!(
+                            "{file_name}: __eh_frame: unknown personality encoding: {:#x}",
                             data[pos]
                         );
                     }
@@ -1568,9 +1571,10 @@ fn parse_eh_frame<E: Arch>(
             continue;
         }
         let addr = hdr.addr as u32 + r.r_address;
-        let Some(cie) = out_cies.iter_mut().find(|c| {
-            c.input_addr <= addr && addr < c.input_addr + c.data.len() as u32
-        }) else {
+        let Some(cie) = out_cies
+            .iter_mut()
+            .find(|c| c.input_addr <= addr && addr < c.input_addr + c.data.len() as u32)
+        else {
             fatal!("{file_name}: __eh_frame: stray personality relocation");
         };
         if !r.is_extern() {
@@ -1585,7 +1589,8 @@ fn parse_eh_frame<E: Arch>(
     // their FDE; the compact record wins. A DWARF-mode record is the
     // exception: it exists to point at the FDE.
     let mut covered: std::collections::HashSet<(usize, u32)> = std::collections::HashSet::new();
-    let mut dwarf_recs: std::collections::HashMap<(usize, u32), usize> = std::collections::HashMap::new();
+    let mut dwarf_recs: std::collections::HashMap<(usize, u32), usize> =
+        std::collections::HashMap::new();
     for (i, rec) in unwind.iter().enumerate() {
         if rec.encoding & UNWIND_MODE_MASK == E::UNWIND_MODE_DWARF {
             dwarf_recs.insert((rec.isec as usize, rec.input_offset), i);
@@ -1660,12 +1665,12 @@ fn parse_eh_frame<E: Arch>(
             code_len,
             encoding: 0,
             personality_sym: UNWIND_NONE,
-            lsda_isec: UNWIND_NONE, lsda_off: 0,
+            lsda_isec: UNWIND_NONE,
+            lsda_off: 0,
             fde_idx: fde_idx as u32,
         });
     }
 }
-
 
 /// Returns true if an object contains Objective-C class or category
 /// metadata, which -ObjC forces to be linked from archives. ld64 also
@@ -1720,8 +1725,7 @@ pub fn defined_symbol_names(mf: &MappedFile) -> Vec<&'static str> {
         if lc.cmd == LC_SYMTAB {
             let cmd = SymtabCommand::read_from(&data[off..]);
             let nlists: Vec<NList> = read_array(data, cmd.symoff as usize, cmd.nsyms as usize);
-            let strtab: &[u8] =
-                &data[cmd.stroff as usize..(cmd.stroff + cmd.strsize) as usize];
+            let strtab: &[u8] = &data[cmd.stroff as usize..(cmd.stroff + cmd.strsize) as usize];
             // SAFETY: input files are leaked, so the string table lives
             // for the rest of the process.
             let strtab: &'static [u8] = validate_strtab(unsafe { std::mem::transmute(strtab) });
@@ -1743,8 +1747,7 @@ pub fn defined_symbol_names(mf: &MappedFile) -> Vec<&'static str> {
 /// type. Fat headers are big-endian.
 pub fn get_fat_slice<E: Arch>(mf: &'static MappedFile) -> &'static MappedFile {
     let data = mf.data;
-    let read_be32 =
-        |off: usize| u32::from_be_bytes(data[off..off + 4].try_into().unwrap());
+    let read_be32 = |off: usize| u32::from_be_bytes(data[off..off + 4].try_into().unwrap());
 
     let nfat_arch = read_be32(4) as usize;
     for i in 0..nfat_arch {
@@ -1847,8 +1850,7 @@ fn load_reexports<E: Arch>(
                     continue;
                 }
                 check_dylib_versions(ctx, dep);
-                let (dep_exports, dep_tlvs, dep_reexports, dep_rpaths) =
-                    dylib_binary_exports(dep);
+                let (dep_exports, dep_tlvs, dep_reexports, dep_rpaths) = dylib_binary_exports(dep);
                 exports.extend(dep_exports);
                 tlv_exports.extend(dep_tlvs);
                 for dep_name in dep_reexports {
@@ -1885,9 +1887,14 @@ fn check_dylib_versions<E: Arch>(ctx: &Context<E>, mf: &MappedFile) {
     for _ in 0..hdr.ncmds {
         let data = &mf.data[off..];
         let lc = LoadCommand::read_from(data);
-        if matches!(lc.cmd, LC_BUILD_VERSION | LC_VERSION_MIN_MACOSX
-            | LC_VERSION_MIN_IPHONEOS | LC_VERSION_MIN_TVOS | LC_VERSION_MIN_WATCHOS)
-        {
+        if matches!(
+            lc.cmd,
+            LC_BUILD_VERSION
+                | LC_VERSION_MIN_MACOSX
+                | LC_VERSION_MIN_IPHONEOS
+                | LC_VERSION_MIN_TVOS
+                | LC_VERSION_MIN_WATCHOS
+        ) {
             versions.push(PlatformVersion::read(lc.cmd, data, hdr.cputype));
         }
         off += lc.cmdsize as usize;
@@ -1902,8 +1909,12 @@ fn check_dylib_versions<E: Arch>(ctx: &Context<E>, mf: &MappedFile) {
                 );
             }
         } else {
-            fatal!("building for '{}', but linking in dylib ({}) built for '{}'",
-                platform_name(ctx.args.platform), mf.name, platform_name(first.platform));
+            fatal!(
+                "building for '{}', but linking in dylib ({}) built for '{}'",
+                platform_name(ctx.args.platform),
+                mf.name,
+                platform_name(first.platform)
+            );
         }
     }
 }
@@ -2000,7 +2011,8 @@ pub fn parse_dylib_binary<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile
     }
     if let Some((off, size)) = find_export_trie(data, &hdr) {
         for (name, flags) in export_trie_entries(data, off, size) {
-            if flags as u32 & EXPORT_SYMBOL_FLAGS_KIND_MASK == EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL {
+            if flags as u32 & EXPORT_SYMBOL_FLAGS_KIND_MASK == EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL
+            {
                 tlv_exports.insert(name);
             }
             if flags as u32 & EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION != 0 {
@@ -2013,10 +2025,8 @@ pub fn parse_dylib_binary<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile
     // Each re-exported library keeps the referencing dylib's directory
     // and rpaths, since @loader_path and @rpath in an install name are
     // relative to the referrer.
-    let reexports: Vec<(String, String, Vec<String>)> = reexports
-        .into_iter()
-        .map(|name| (name, dir_of(&mf.name), rpaths.clone()))
-        .collect();
+    let reexports: Vec<(String, String, Vec<String>)> =
+        reexports.into_iter().map(|name| (name, dir_of(&mf.name), rpaths.clone())).collect();
     load_reexports(ctx, reexports, &mf.name, &mut exports, &mut tlv_exports, &mut weak_exports);
 
     let priority = ctx.next_priority();
@@ -2143,7 +2153,10 @@ fn export_trie_entries(data: &[u8], off: usize, size: usize) -> Vec<(&'static st
             let flags = read_uleb(&mut p);
             // Individual edge labels need not end at UTF-8 boundaries.
             // Decode only after assembling the complete symbol name.
-            names.push((String::leak(String::from_utf8_lossy(&prefix).into_owned()) as &'static str, flags));
+            names.push((
+                String::leak(String::from_utf8_lossy(&prefix).into_owned()) as &'static str,
+                flags,
+            ));
             pos += terminal;
         }
         let Some(&nchildren) = trie.get(pos) else { continue };
@@ -2307,7 +2320,8 @@ fn dylib_binary_exports(
     }
     if let Some((off, size)) = find_export_trie(data, &hdr) {
         for (name, flags) in export_trie_entries(data, off, size) {
-            if flags as u32 & EXPORT_SYMBOL_FLAGS_KIND_MASK == EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL {
+            if flags as u32 & EXPORT_SYMBOL_FLAGS_KIND_MASK == EXPORT_SYMBOL_FLAGS_KIND_THREAD_LOCAL
+            {
                 tlv_exports.push(name);
             }
             exports.push(name);
@@ -2452,8 +2466,7 @@ fn interpret_ld_symbols<E: Arch>(ctx: &Context<E>, tbd: &mut tapi::TbdFile) {
         }
     }
 
-    tbd.exports
-        .retain(|n| !n.starts_with("$ld$") && !hidden.contains(n));
+    tbd.exports.retain(|n| !n.starts_with("$ld$") && !hidden.contains(n));
     tbd.weak_exports.retain(|n| !hidden.contains(n));
     tbd.exports.extend(added);
     if let Some(name) = install_name {
@@ -2464,13 +2477,11 @@ fn interpret_ld_symbols<E: Arch>(ctx: &Context<E>, tbd: &mut tapi::TbdFile) {
 pub fn parse_dylib<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
     let mut tbd = tapi::parse_cached(mf, E::NAME);
     interpret_ld_symbols(ctx, &mut tbd);
-    let mut exports: hashbrown::HashSet<&'static str> =
-        tbd.exports.into_iter().collect();
+    let mut exports: hashbrown::HashSet<&'static str> = tbd.exports.into_iter().collect();
     let mut weak_exports: hashbrown::HashSet<&'static str> =
         tbd.weak_exports.iter().copied().collect();
     exports.extend(tbd.weak_exports);
-    let mut tlv_exports: hashbrown::HashSet<&'static str> =
-        tbd.tlv_exports.into_iter().collect();
+    let mut tlv_exports: hashbrown::HashSet<&'static str> = tbd.tlv_exports.into_iter().collect();
     exports.extend(tlv_exports.iter().copied());
 
     let reexports: Vec<(String, String, Vec<String>)> = tbd
@@ -2517,7 +2528,8 @@ fn add_dylib<E: Arch>(ctx: &mut Context<E>, dylib: DylibFile) -> usize {
     // a .tbd omits not_app_extension_safe) before extension code may
     // link it. ld64 warns rather than errs, and -w silences it.
     if ctx.args.application_extension && !dylib.is_app_extension_safe {
-        crate::warn!("linking against a dylib which is not safe for use in application extensions: {}",
+        crate::warn!(
+            "linking against a dylib which is not safe for use in application extensions: {}",
             dylib.install_name
         );
     }
@@ -2537,17 +2549,14 @@ fn add_dylib<E: Arch>(ctx: &mut Context<E>, dylib: DylibFile) -> usize {
         };
         let ours = ctx.args.umbrella.as_deref() == Some(umbrella.as_str());
         if !ours && client != *umbrella && !dylib.sub_clients.contains(&client) {
-            crate::error!("cannot link directly with {}: not an allowed client of umbrella framework {}",
+            crate::error!(
+                "cannot link directly with {}: not an allowed client of umbrella framework {}",
                 dylib.install_name,
                 umbrella
             );
         }
     }
-    if let Some(idx) = ctx
-        .dylibs
-        .iter()
-        .position(|d| d.install_name == dylib.install_name)
-    {
+    if let Some(idx) = ctx.dylibs.iter().position(|d| d.install_name == dylib.install_name) {
         let exports = dylib.exports;
         ctx.dylibs[idx].exports.extend(exports);
         return idx;

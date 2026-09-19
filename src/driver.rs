@@ -2,8 +2,8 @@
 
 use crate::arch::Arch;
 use crate::cmdline;
-use crate::dead_strip;
 use crate::context::Context;
+use crate::dead_strip;
 use crate::output_file;
 use crate::passes;
 
@@ -16,7 +16,6 @@ pub fn main(
     argv: Vec<String>,
     link_for_target: impl Fn(&str, &[String]) -> Result<i32, String>,
 ) -> i32 {
-
     // Guess the target from -arch, then from the first Mach-O input
     // file, falling back to the host. If the guess turns out wrong,
     // start over with the right one.
@@ -164,11 +163,15 @@ pub fn link<E: Arch>(cmdline: &[String]) -> Result<i32, String> {
             eprintln!("    merge_literals {:?}", tt.elapsed());
         }
     }
-    macro_rules! tp { ($name:expr, $e:expr) => {{
-        let tt = std::time::Instant::now();
-        $e;
-        if std::env::var_os("MOLD_TIMING").is_some() { eprintln!("    {} {:?}", $name, tt.elapsed()); }
-    }}; }
+    macro_rules! tp {
+        ($name:expr, $e:expr) => {{
+            let tt = std::time::Instant::now();
+            $e;
+            if std::env::var_os("MOLD_TIMING").is_some() {
+                eprintln!("    {} {:?}", $name, tt.elapsed());
+            }
+        }};
+    }
     tp!("add_synthetic_symbols", passes::add_synthetic_symbols(&mut ctx));
     tp!("convert_common_symbols", passes::convert_common_symbols(&mut ctx));
     tp!("create_objc_msgsend_stubs", passes::create_objc_msgsend_stubs(&mut ctx));

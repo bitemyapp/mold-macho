@@ -4,10 +4,10 @@
 
 use crate::arch::{Arch, RelocClass};
 use crate::context::Context;
+use crate::input_files::FileId;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
 use crate::passes::{objc_ref_addr, DataField};
-use crate::input_files::FileId;
 use crate::util::write_uleb;
 
 /// The rebase opcode stream: every pointer dyld slides.
@@ -94,7 +94,11 @@ pub struct LazyBindInfoSection {
 
 impl LazyBindInfoSection {
     pub fn new() -> LazyBindInfoSection {
-        LazyBindInfoSection { hdr: ChunkHeader::linkedit(), contents: Vec::new(), offsets: Vec::new() }
+        LazyBindInfoSection {
+            hdr: ChunkHeader::linkedit(),
+            contents: Vec::new(),
+            offsets: Vec::new(),
+        }
     }
 }
 
@@ -111,7 +115,9 @@ pub mod lazy_bind_info {
 /// the offset within it.
 fn segment_and_offset<E: Arch>(ctx: &Context<E>, addr: u64) -> (usize, u64) {
     for (i, seg) in ctx.segments.iter().enumerate() {
-        if seg.cmd.vmaddr <= addr && addr < seg.cmd.vmaddr + seg.cmd.vmsize && seg.name != "__PAGEZERO"
+        if seg.cmd.vmaddr <= addr
+            && addr < seg.cmd.vmaddr + seg.cmd.vmsize
+            && seg.name != "__PAGEZERO"
         {
             return (i, addr - seg.cmd.vmaddr);
         }
@@ -147,7 +153,8 @@ pub fn build_rebase_info<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
             let imported = ctx
                 .reloc_target_sym(isec.file as usize, rel)
                 .is_some_and(|id| ctx.symbols[id].is_imported());
-            let absolute = ctx.reloc_target_sym(isec.file as usize, rel)
+            let absolute = ctx
+                .reloc_target_sym(isec.file as usize, rel)
                 .is_some_and(|id| ctx.is_absolute_symbol(id));
             if !imported && !absolute && !ctx.reloc_target_is_tls(isec.file as usize, rel) {
                 locs.push(base + rel.offset as u64);
@@ -274,9 +281,7 @@ pub fn build_lazy_bind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<u32>) {
         buf.push(BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | seg as u8);
         write_uleb(&mut buf, off);
         let sym = &ctx.symbols[id];
-        let Some(FileId::Dylib(dylib)) = sym.file() else {
-            unreachable!()
-        };
+        let Some(FileId::Dylib(dylib)) = sym.file() else { unreachable!() };
         let ordinal = ctx.bind_ordinal(dylib);
         if ordinal <= 0 {
             buf.push(BIND_OPCODE_SET_DYLIB_SPECIAL_IMM | (ordinal & 0xf) as u8);
@@ -356,9 +361,7 @@ pub fn build_bind_info<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
     let mut last_addend = 0i64;
     for (addr, id, addend) in binds {
         let sym = &ctx.symbols[id];
-        let Some(FileId::Dylib(dylib)) = sym.file() else {
-            unreachable!()
-        };
+        let Some(FileId::Dylib(dylib)) = sym.file() else { unreachable!() };
         let ordinal = ctx.bind_ordinal(dylib);
         // The special ordinals (main executable 0, flat lookup -2) take
         // the SPECIAL_IMM form, as ld64 emits them.
@@ -370,11 +373,7 @@ pub fn build_bind_info<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
             buf.push(BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB);
             write_uleb(&mut buf, ordinal as u64);
         }
-        let flags = if sym.is_weak_ref() {
-            BIND_SYMBOL_FLAGS_WEAK_IMPORT
-        } else {
-            0
-        };
+        let flags = if sym.is_weak_ref() { BIND_SYMBOL_FLAGS_WEAK_IMPORT } else { 0 };
         buf.push(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM | flags);
         buf.extend_from_slice(sym.name().as_bytes());
         buf.push(0);

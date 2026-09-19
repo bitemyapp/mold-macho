@@ -15,7 +15,9 @@ fn json_string(s: &str) -> String {
         match c {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
-            '\x00'..='\x1f' => { let _ = write!(out, "\\u{:04x}", c as u32); }
+            '\x00'..='\x1f' => {
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            }
             _ => out.push(c),
         }
     }
@@ -38,21 +40,26 @@ pub fn write_sdk_imports<E: Arch>(ctx: &Context<E>) {
         let Some(dylib) = ctx.dylibs.get(idx as usize) else { continue };
         imports.entry(&dylib.install_name).or_default().push(sym.name());
     }
-    let libraries: Vec<String> = imports.into_iter().map(|(name, mut symbols)| {
-        symbols.sort_unstable();
-        symbols.dedup();
-        let symbols: Vec<String> = symbols.into_iter().map(json_string).collect();
-        format!("{{\"installName\":{},\"symbols\":[{}]}}", json_string(name), symbols.join(","))
-    }).collect();
+    let libraries: Vec<String> = imports
+        .into_iter()
+        .map(|(name, mut symbols)| {
+            symbols.sort_unstable();
+            symbols.dedup();
+            let symbols: Vec<String> = symbols.into_iter().map(json_string).collect();
+            format!("{{\"installName\":{},\"symbols\":[{}]}}", json_string(name), symbols.join(","))
+        })
+        .collect();
     let output = json_string(&ctx.args.output);
     let report = format!(
         "{{\"version\":1,\"output\":{output},\"arch\":{},\"linker\":{},\"apiListVersion\":0,\
          \"platform\":{},\"deploymentVersion\":{},\"sdkVersion\":{},\
          \"inputs\":[{{\"path\":{output},\"sdkImports\":[{}]}}]}}\n",
-        json_string(E::NAME), json_string(concat!("mold-macho-", env!("CARGO_PKG_VERSION"))),
+        json_string(E::NAME),
+        json_string(concat!("mold-macho-", env!("CARGO_PKG_VERSION"))),
         json_string(&platform_name(ctx.args.platform)),
         json_string(&format_version(ctx.args.platform_minos)),
-        json_string(&format_version(ctx.args.platform_sdk)), libraries.join(",")
+        json_string(&format_version(ctx.args.platform_sdk)),
+        libraries.join(",")
     );
     std::fs::write(path, report).unwrap_or_else(|e| fatal!("cannot write {path}: {e}"));
 }
@@ -183,7 +190,8 @@ pub fn print_map<E: Arch>(ctx: &Context<E>) {
             if ctx.isecs[isec].is_alive()
                 || !ctx.objs[obj].is_alive
                 || sym.name().is_empty()
-                || (!sym.is_extern() && (sym.name().starts_with('l') || sym.name().starts_with('L')))
+                || (!sym.is_extern()
+                    && (sym.name().starts_with('l') || sym.name().starts_with('L')))
             {
                 continue;
             }
@@ -195,7 +203,11 @@ pub fn print_map<E: Arch>(ctx: &Context<E>) {
     let _ = writeln!(out, "# Symbols:");
     let _ = writeln!(out, "# Address\tSize    \tFile  Name");
     if ctx.args.output_type == crate::macho::MH_EXECUTE {
-        let _ = writeln!(out, "0x{:08X}\t0x00000000\t[  0] __mh_execute_header", ctx.args.pagezero_size);
+        let _ = writeln!(
+            out,
+            "0x{:08X}\t0x00000000\t[  0] __mh_execute_header",
+            ctx.args.pagezero_size
+        );
     }
     for idx in order {
         let (addr, file, name, _, _) = syms[idx];
@@ -210,11 +222,8 @@ pub fn print_map<E: Arch>(ctx: &Context<E>) {
                 Some(&(_, next_value, next_isec, _)) if next_isec == isec => next_value,
                 _ => ctx.isecs[isec].size as u64,
             };
-            let _ = writeln!(
-                out,
-                "<<dead>> \t0x{:08X}\t[{file:3}] {name}",
-                end.saturating_sub(value)
-            );
+            let _ =
+                writeln!(out, "<<dead>> \t0x{:08X}\t[{file:3}] {name}", end.saturating_sub(value));
         }
     }
 }

@@ -21,10 +21,7 @@ pub fn read_archive_members(mf: &'static MappedFile) -> Vec<&'static MappedFile>
     while off + 60 <= data.len() {
         let hdr = &data[off..off + 60];
         let field = |range: std::ops::Range<usize>| {
-            std::str::from_utf8(&hdr[range])
-                .unwrap_or("")
-                .trim_end()
-                .to_string()
+            std::str::from_utf8(&hdr[range]).unwrap_or("").trim_end().to_string()
         };
         let name = field(0..16);
         let Ok(size) = field(48..58).parse::<usize>() else {

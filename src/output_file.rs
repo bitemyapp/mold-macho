@@ -100,7 +100,8 @@ impl OutputFile {
         let _ = std::fs::remove_file(path);
         *OUTPUT_PATH.lock().unwrap() = Some(PathBuf::from(path));
 
-        let file = std::fs::File::create(path).unwrap_or_else(|e| fatal!("cannot write {path}: {e}"));
+        let file =
+            std::fs::File::create(path).unwrap_or_else(|e| fatal!("cannot write {path}: {e}"));
         let _ = file.set_len(len as u64);
         let file = Arc::new(file);
 
@@ -127,12 +128,7 @@ impl OutputFile {
             })
             .collect();
 
-        OutputFile {
-            path: path.to_string(),
-            len,
-            tx: Some(tx),
-            threads,
-        }
+        OutputFile { path: path.to_string(), len, tx: Some(tx), threads }
     }
 
     /// Queues the buffer's bytes at `off..off + len` for writing. They
@@ -161,7 +157,8 @@ impl OutputFile {
                 Err(_) => fatal!("cannot write {}: writer thread panicked", self.path),
             }
         }
-        if let Err(e) = std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o755)) {
+        if let Err(e) = std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o755))
+        {
             fatal!("cannot chmod {}: {e}", self.path);
         }
         *OUTPUT_PATH.lock().unwrap() = None;

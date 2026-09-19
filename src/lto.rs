@@ -63,7 +63,8 @@ pub fn load_plugin(path: Option<&str>) -> Plugin {
     unsafe {
         let handle = libc::dlopen(path.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL);
         if handle.is_null() {
-            fatal!("could not load the LTO library {}; is -lto_library missing?",
+            fatal!(
+                "could not load the LTO library {}; is -lto_library missing?",
                 path.to_string_lossy()
             );
         }
@@ -80,9 +81,7 @@ pub fn load_plugin(path: Option<&str>) -> Plugin {
 
         Plugin {
             get_error_message: dlsym!("lto_get_error_message"),
-            module_create_from_memory_with_path: dlsym!(
-                "lto_module_create_from_memory_with_path"
-            ),
+            module_create_from_memory_with_path: dlsym!("lto_module_create_from_memory_with_path"),
             module_dispose: dlsym!("lto_module_dispose"),
             module_get_num_symbols: dlsym!("lto_module_get_num_symbols"),
             module_get_symbol_name: dlsym!("lto_module_get_symbol_name"),
@@ -106,11 +105,7 @@ pub struct LtoSymbol {
 }
 
 /// Creates a module from a bitcode buffer and lists its symbols.
-pub fn parse_module(
-    plugin: &Plugin,
-    data: &[u8],
-    name: &str,
-) -> (usize, Vec<LtoSymbol>) {
+pub fn parse_module(plugin: &Plugin, data: &[u8], name: &str) -> (usize, Vec<LtoSymbol>) {
     let cname = CString::new(name).unwrap_or_default();
     // SAFETY: the buffer is valid for the call's duration; libLTO copies
     // what it needs.

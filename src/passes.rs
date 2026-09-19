@@ -3,23 +3,22 @@
 use std::path::{Path, PathBuf};
 
 use crate::arch::Arch;
+use crate::arch::RelocClass;
 use crate::cmdline::InputArg;
 use crate::context::Context;
 use crate::error;
 use crate::fatal;
 use crate::filetype::{get_file_type, FileType};
 use crate::input_files;
+use crate::input_files::FileId;
 use crate::input_sections::{InputSection, RelocTarget};
 use crate::macho::*;
 use crate::mapped_file::MappedFile;
 use crate::output_chunks::misc::{code_signature_size, SectCreateSection};
 use crate::output_chunks::symtab::SymtabSection;
 use crate::output_chunks::{
-    self, ChunkId, OutputSection, OutputSectionId, OutputSegment, Tail,
-    mach_header_size,
+    self, mach_header_size, ChunkId, OutputSection, OutputSectionId, OutputSegment, Tail,
 };
-use crate::arch::RelocClass;
-use crate::input_files::FileId;
 use crate::tapi;
 use crate::util::align_to;
 
@@ -169,12 +168,7 @@ fn collect_file<E: Arch>(
     match get_file_type(mf) {
         FileType::Object => {
             let priority = ctx.next_priority();
-            out.push(PendingObject {
-                mf,
-                alive: true,
-                hidden,
-                priority,
-            });
+            out.push(PendingObject { mf, alive: true, hidden, priority });
         }
         // A relocatable output keeps every reference undefined for the
         // final link, so a dylib named on its command line is ignored
@@ -226,12 +220,7 @@ fn collect_file<E: Arch>(
                     }
                     _ => {
                         let priority = ctx.next_priority();
-                        out.push(PendingObject {
-                            mf: member,
-                            alive,
-                            hidden,
-                            priority,
-                        });
+                        out.push(PendingObject { mf: member, alive, hidden, priority });
                     }
                 }
             }
@@ -253,17 +242,15 @@ fn collect_file<E: Arch>(
 fn load_pending<E: Arch>(ctx: &mut Context<E>, pending: Vec<PendingObject>) {
     use rayon::prelude::*;
     let relocatable = ctx.args.relocatable;
-    let staged: Vec<input_files::StagedObject> = t!("stage", pending
-        .par_iter()
-        .map(|p| {
-            input_files::stage_object::<E>(p.mf,
-                p.alive,
-                p.hidden,
-                p.priority,
-                relocatable,
-            )
-        })
-        .collect());
+    let staged: Vec<input_files::StagedObject> = t!(
+        "stage",
+        pending
+            .par_iter()
+            .map(|p| {
+                input_files::stage_object::<E>(p.mf, p.alive, p.hidden, p.priority, relocatable)
+            })
+            .collect()
+    );
 
     // Intern every staged object's global names in one parallel batch
     // (mold's sharded symbol table), so the serial integration loop
@@ -326,16 +313,19 @@ pub fn read_input_files<E: Arch>(ctx: &mut Context<E>) {
         };
         for arg in &inputs {
             match arg {
-                InputArg::File(path) | InputArg::WeakFile(path) | InputArg::ReexportFile(path)
-                | InputArg::NeededFile(path) => {
-                    consider(Path::new(path), &mut stubs)
-                }
-                InputArg::Lib(name, _) | InputArg::ReexportLib(name) | InputArg::NeededLib(name) => {
+                InputArg::File(path)
+                | InputArg::WeakFile(path)
+                | InputArg::ReexportFile(path)
+                | InputArg::NeededFile(path) => consider(Path::new(path), &mut stubs),
+                InputArg::Lib(name, _)
+                | InputArg::ReexportLib(name)
+                | InputArg::NeededLib(name) => {
                     if let Some(path) = find_library(ctx, name) {
                         consider(&path, &mut stubs);
                     }
                 }
-                InputArg::Framework(name, _) | InputArg::NeededFramework(name)
+                InputArg::Framework(name, _)
+                | InputArg::NeededFramework(name)
                 | InputArg::ReexportFramework(name) => {
                     if let Some(path) = find_framework(ctx, name) {
                         consider(&path, &mut stubs);
@@ -634,7 +624,9 @@ fn claim_locals<E: Arch>(ctx: &mut Context<E>) {
                         sym.set_file(FileId::Obj((obj_idx) as u32));
                         sym.set_input_section(Some(isec as u32));
                         sym.value = off;
-                        sym.set_no_dead_strip(nlist.n_desc & (N_NO_DEAD_STRIP | REFERENCED_DYNAMICALLY) != 0);
+                        sym.set_no_dead_strip(
+                            nlist.n_desc & (N_NO_DEAD_STRIP | REFERENCED_DYNAMICALLY) != 0,
+                        );
                     }
                 }
                 _ => {}
@@ -691,22 +683,19 @@ fn do_resolve<E: Arch>(ctx: &mut Context<E>, only_alive: bool) {
     let used: Vec<AtomicBool> = (0..n).map(|_| AtomicBool::new(false)).collect();
     let weak_ref: Vec<AtomicBool> = (0..n).map(|_| AtomicBool::new(false)).collect();
     let strong_ref: Vec<AtomicBool> = (0..n).map(|_| AtomicBool::new(false)).collect();
-    ctx.objs
-        .par_iter()
-        .filter(|obj| !only_alive || obj.is_alive)
-        .for_each(|obj| {
-            let r = obj.global_range();
-            for (nlist, &sym_id) in obj.nlists[r.clone()].iter().zip(&obj.symbols[r]) {
-                if !nlist.is_stab() && nlist.is_extern() && nlist.n_type() == N_UNDF {
-                    used[sym_id as usize].store(true, Ordering::Relaxed);
-                    if nlist.n_desc & N_WEAK_REF != 0 {
-                        weak_ref[sym_id as usize].store(true, Ordering::Relaxed);
-                    } else {
-                        strong_ref[sym_id as usize].store(true, Ordering::Relaxed);
-                    }
+    ctx.objs.par_iter().filter(|obj| !only_alive || obj.is_alive).for_each(|obj| {
+        let r = obj.global_range();
+        for (nlist, &sym_id) in obj.nlists[r.clone()].iter().zip(&obj.symbols[r]) {
+            if !nlist.is_stab() && nlist.is_extern() && nlist.n_type() == N_UNDF {
+                used[sym_id as usize].store(true, Ordering::Relaxed);
+                if nlist.n_desc & N_WEAK_REF != 0 {
+                    weak_ref[sym_id as usize].store(true, Ordering::Relaxed);
+                } else {
+                    strong_ref[sym_id as usize].store(true, Ordering::Relaxed);
                 }
             }
-        });
+        }
+    });
     for name in &ctx.args.forced_undefined {
         if let Some(id) = ctx.symbols.get(name) {
             used[id as usize].store(true, Ordering::Relaxed);
@@ -756,17 +745,14 @@ fn do_resolve<E: Arch>(ctx: &mut Context<E>, only_alive: bool) {
     };
 
     let best: Vec<AtomicU64> = (0..n).map(|_| AtomicU64::new(u64::MAX)).collect();
-    ctx.objs
-        .par_iter()
-        .filter(|obj| !only_alive || obj.is_alive)
-        .for_each(|obj| {
-            let r = obj.global_range();
-            for (nlist, &sym_id) in obj.nlists[r.clone()].iter().zip(&obj.symbols[r]) {
-                if let Some(rank) = rank_of(obj, nlist) {
-                    best[sym_id as usize].fetch_min(rank, Ordering::Relaxed);
-                }
+    ctx.objs.par_iter().filter(|obj| !only_alive || obj.is_alive).for_each(|obj| {
+        let r = obj.global_range();
+        for (nlist, &sym_id) in obj.nlists[r.clone()].iter().zip(&obj.symbols[r]) {
+            if let Some(rank) = rank_of(obj, nlist) {
+                best[sym_id as usize].fetch_min(rank, Ordering::Relaxed);
             }
-        });
+        }
+    });
 
     // Claim phase: each object writes the symbols whose race it won.
     // Ranks are unique per object, so every symbol has exactly one
@@ -778,10 +764,8 @@ fn do_resolve<E: Arch>(ctx: &mut Context<E>, only_alive: bool) {
     let isecs = &ctx.isecs;
     let objs = &ctx.objs;
 
-    objs.par_iter()
-        .enumerate()
-        .filter(|(_, obj)| !only_alive || obj.is_alive)
-        .for_each(|(obj_idx, obj)| {
+    objs.par_iter().enumerate().filter(|(_, obj)| !only_alive || obj.is_alive).for_each(
+        |(obj_idx, obj)| {
             let r = obj.global_range();
             for (nlist, &sym_id) in obj.nlists[r.clone()].iter().zip(&obj.symbols[r]) {
                 let Some(rank) = rank_of(obj, nlist) else {
@@ -799,7 +783,9 @@ fn do_resolve<E: Arch>(ctx: &mut Context<E>, only_alive: bool) {
                 sym.set_is_common(false);
                 sym.set_is_weak_def(nlist.n_desc & N_WEAK_DEF != 0);
                 sym.set_is_private_extern(nlist.n_type & N_PEXT != 0 || obj.hidden);
-                sym.set_no_dead_strip(nlist.n_desc & (N_NO_DEAD_STRIP | REFERENCED_DYNAMICALLY) != 0);
+                sym.set_no_dead_strip(
+                    nlist.n_desc & (N_NO_DEAD_STRIP | REFERENCED_DYNAMICALLY) != 0,
+                );
 
                 match nlist.n_type() {
                     N_ABS => {
@@ -809,11 +795,7 @@ fn do_resolve<E: Arch>(ctx: &mut Context<E>, only_alive: bool) {
                     }
                     N_SECT => {
                         sym.set_file(FileId::Obj((obj_idx) as u32));
-                        match crate::input_files::find_subsec(
-                            isecs,
-                            &obj.subsecs,
-                            nlist.n_value,
-                        ) {
+                        match crate::input_files::find_subsec(isecs, &obj.subsecs, nlist.n_value) {
                             Some((isec, off)) => {
                                 sym.set_input_section(Some(isec as u32));
                                 sym.value = off;
@@ -836,7 +818,8 @@ fn do_resolve<E: Arch>(ctx: &mut Context<E>, only_alive: bool) {
                     _ => unreachable!(),
                 }
             }
-        });
+        },
+    );
 
     // Common symbols merge: the largest size and strictest alignment
     // win regardless of input order, gathered from every common claim
@@ -927,9 +910,7 @@ fn mark_live_objects<E: Arch>(ctx: &mut Context<E>) {
     // Resolution runs in rounds and recomputes liveness each time, so
     // the -why_load record starts over with it.
     ctx.why_load.clear();
-    let mut queue: Vec<usize> = (0..ctx.objs.len())
-        .filter(|&i| ctx.objs[i].is_alive)
-        .collect();
+    let mut queue: Vec<usize> = (0..ctx.objs.len()).filter(|&i| ctx.objs[i].is_alive).collect();
 
     // The entry point and -u symbols are roots too.
     let mut root_syms: Vec<&str> = vec![ctx.args.entry.as_str()];
@@ -1147,7 +1128,8 @@ pub fn convert_init_offsets<E: Arch>(ctx: &mut Context<E>) {
         let mut relocs = ctx.isec_relocs(i).to_vec();
         // Imported or unresolved initializers cannot be represented as
         // local offsets. Keep their pointer section and its references.
-        if relocs.iter().any(|rel| ctx.reloc_target_isec(ctx.isecs[i].file as usize, rel).is_none()) {
+        if relocs.iter().any(|rel| ctx.reloc_target_isec(ctx.isecs[i].file as usize, rel).is_none())
+        {
             continue;
         }
         relocs.sort_by_key(|r| r.offset);
@@ -1182,14 +1164,13 @@ pub fn check_input_versions<E: Arch>(ctx: &Context<E>) {
         // command. An object may also declare more than one platform;
         // use the deployment target for the platform being linked.
         let Some(first) = obj.platform_versions.first() else { continue };
-        let Some(version) = obj
-            .platform_versions
-            .iter()
-            .find(|v| v.platform == ctx.args.platform)
+        let Some(version) = obj.platform_versions.iter().find(|v| v.platform == ctx.args.platform)
         else {
             crate::error!(
                 "building for '{}', but linking in object file ({}) built for '{}'",
-                platform_name(ctx.args.platform), obj.mf.name, platform_name(first.platform)
+                platform_name(ctx.args.platform),
+                obj.mf.name,
+                platform_name(first.platform)
             );
             continue;
         };
@@ -1199,7 +1180,9 @@ pub fn check_input_versions<E: Arch>(ctx: &Context<E>) {
         if ctx.args.platform_minos != 0 && version.minos > ctx.args.platform_minos {
             crate::warn!(
                 "object file ({}) was built for newer '{}' version ({}) than being linked ({})",
-                obj.mf.name, platform_name(version.platform), format_version(version.minos),
+                obj.mf.name,
+                platform_name(version.platform),
+                format_version(version.minos),
                 format_version(ctx.args.platform_minos)
             );
         }
@@ -1375,7 +1358,9 @@ pub fn coalesce_objc_refs<E: Arch>(ctx: &mut Context<E>) {
                 let sym_id = ctx.objs[obj].symbols[idx as usize];
                 let sym = &ctx.symbols[sym_id];
                 match sym.input_section() {
-                    Some(isec) => Target::At(ctx.resolve_isec(isec as usize), sym.value as i64 + rel.addend),
+                    Some(isec) => {
+                        Target::At(ctx.resolve_isec(isec as usize), sym.value as i64 + rel.addend)
+                    }
                     None => Target::Sym(sym_id, rel.addend),
                 }
             }
@@ -1385,7 +1370,10 @@ pub fn coalesce_objc_refs<E: Arch>(ctx: &mut Context<E>) {
     let mut folds: Vec<(usize, u32)> = Vec::new();
     for i in 0..ctx.isecs.len() {
         let isec = &ctx.isecs[i];
-        if !isec.is_alive() || isec.replacement != crate::input_sections::NO_REPLACEMENT || ctx.is_internal(isec.file as usize) {
+        if !isec.is_alive()
+            || isec.replacement != crate::input_sections::NO_REPLACEMENT
+            || ctx.is_internal(isec.file as usize)
+        {
             continue;
         }
         let h = ctx.hdr_of(isec);
@@ -1395,7 +1383,10 @@ pub fn coalesce_objc_refs<E: Arch>(ctx: &mut Context<E>) {
         let obj = isec.file as usize;
         let rels = ctx.isec_relocs(i);
         let plain_ptr = |rel: &crate::input_sections::Reloc| {
-            E::classify_reloc(rel.r_type) == RelocClass::Plain && rel.size == 8 && !rel.is_pcrel && !rel.is_subtracted
+            E::classify_reloc(rel.r_type) == RelocClass::Plain
+                && rel.size == 8
+                && !rel.is_pcrel
+                && !rel.is_subtracted
         };
         let key = match h.sectname() {
             "__objc_classrefs" if !ctx.args.relocatable => continue,
@@ -1481,10 +1472,7 @@ pub fn create_objc_msgsend_stubs<E: Arch>(ctx: &mut Context<E>) {
         // The stub machinery itself references _objc_msgSend; resolve
         // it now, since regular resolution has already run.
         if !ctx.symbols[id].is_defined() {
-            if let Some(dylib) = ctx
-                .dylibs
-                .iter()
-                .position(|d| d.exports.contains("_objc_msgSend"))
+            if let Some(dylib) = ctx.dylibs.iter().position(|d| d.exports.contains("_objc_msgSend"))
             {
                 let sym = &mut ctx.symbols[id];
                 sym.set_file(FileId::Dylib((dylib) as u32));
@@ -1556,22 +1544,18 @@ pub fn auto_hide_weak_defs<E: Arch>(ctx: &mut Context<E>) {
     });
 
     let exported = ctx.args.exported_symbols.as_ref();
-    ctx.symbols
-        .syms
-        .par_iter_mut()
-        .zip(&flags)
-        .for_each(|(sym, f)| {
-            let f = f.load(Ordering::Relaxed);
-            if f & SEEN != 0
-                && f & NOT_HIDABLE == 0
-                && sym.is_weak_def()
-                && sym.is_extern()
-                && matches!(sym.file(), Some(FileId::Obj(_)))
-                && !exported.is_some_and(|list| list.iter().any(|n| n == sym.name()))
-            {
-                sym.set_is_private_extern(true);
-            }
-        });
+    ctx.symbols.syms.par_iter_mut().zip(&flags).for_each(|(sym, f)| {
+        let f = f.load(Ordering::Relaxed);
+        if f & SEEN != 0
+            && f & NOT_HIDABLE == 0
+            && sym.is_weak_def()
+            && sym.is_extern()
+            && matches!(sym.file(), Some(FileId::Obj(_)))
+            && !exported.is_some_and(|list| list.iter().any(|n| n == sym.name()))
+        {
+            sym.set_is_private_extern(true);
+        }
+    });
 }
 
 /// Hide definitions before dead stripping and relocation scanning so
@@ -1644,11 +1628,9 @@ pub fn coalesce_weak_defs<E: Arch>(ctx: &mut Context<E>) {
                     continue;
                 }
                 let Some(winner) = sym.input_section().map(|i| i as usize) else { continue };
-                let Some((loser, off)) = crate::input_files::find_subsec(
-                    &shared.isecs,
-                    &obj.subsecs,
-                    nlist.n_value,
-                ) else {
+                let Some((loser, off)) =
+                    crate::input_files::find_subsec(&shared.isecs, &obj.subsecs, nlist.n_value)
+                else {
                     continue;
                 };
                 let values = values.get_or_insert_with(|| {
@@ -1697,7 +1679,10 @@ pub fn coalesce_weak_defs<E: Arch>(ctx: &mut Context<E>) {
 
 /// Whether two copies of a weak definition can stand for each other:
 /// the same size, or the longer's tail beyond the shorter is zero.
-fn same_shape(a: &crate::input_sections::InputSection, b: &crate::input_sections::InputSection) -> bool {
+fn same_shape(
+    a: &crate::input_sections::InputSection,
+    b: &crate::input_sections::InputSection,
+) -> bool {
     if a.size == b.size {
         return true;
     }
@@ -1729,7 +1714,9 @@ pub fn check_duplicate_symbols<E: Arch>(ctx: &Context<E>) {
                     return None;
                 }
                 match ctx.symbols[sym_id].file() {
-                    Some(FileId::Obj(owner)) if owner as usize != obj_idx => Some((sym_id, obj_idx)),
+                    Some(FileId::Obj(owner)) if owner as usize != obj_idx => {
+                        Some((sym_id, obj_idx))
+                    }
                     _ => None,
                 }
             })
@@ -1946,12 +1933,11 @@ pub fn dead_strip_dylibs<E: Arch>(ctx: &mut Context<E>) {
     // Ordinals (and so the load commands) in ld64's order: the
     // libraries named on the command line or by auto-link options in
     // naming order, then the implicitly loaded ones by install name.
-    let mut order: Vec<usize> = (0..ctx.dylibs.len()).filter(|&i| !ctx.dylibs[i].is_bundle_loader).collect();
+    let mut order: Vec<usize> =
+        (0..ctx.dylibs.len()).filter(|&i| !ctx.dylibs[i].is_bundle_loader).collect();
     order.sort_by(|&a, &b| {
         let (da, db) = (&ctx.dylibs[a], &ctx.dylibs[b]);
-        da.load_order
-            .cmp(&db.load_order)
-            .then_with(|| da.install_name.cmp(&db.install_name))
+        da.load_order.cmp(&db.load_order).then_with(|| da.install_name.cmp(&db.install_name))
     });
     for (ordinal, &i) in order.iter().enumerate() {
         ctx.dylibs[i].dylib_idx = ordinal as i32 + 1;
@@ -1990,9 +1976,7 @@ pub fn scan_relocations<E: Arch>(ctx: &mut Context<E>) {
                 // to a thread-local is caught because thread-locals
                 // are reached exclusively through TLV relocations,
                 // checked against the symbol below either way.
-                if class == RelocClass::Plain
-                    && !is_thread_local_sym(ctx_ref, id)
-                {
+                if class == RelocClass::Plain && !is_thread_local_sym(ctx_ref, id) {
                     return None;
                 }
                 Some((id, class))
@@ -2110,11 +2094,8 @@ pub fn scan_objc_stubs<E: Arch>(ctx: &mut Context<E>) {
 /// Personality functions are referenced from __unwind_info through the
 /// GOT.
 pub fn scan_unwind_personalities<E: Arch>(ctx: &mut Context<E>) {
-    let mut personalities: Vec<_> = ctx
-        .unwind_records
-        .iter()
-        .filter_map(|rec| rec.personality())
-        .collect();
+    let mut personalities: Vec<_> =
+        ctx.unwind_records.iter().filter_map(|rec| rec.personality()).collect();
     personalities.extend(ctx.fdes.iter().filter_map(|fde| ctx.cies[fde.cie as usize].personality));
     for id in personalities {
         add_got(ctx, id);
@@ -2213,7 +2194,8 @@ pub fn fold_objc_classrefs<E: Arch>(ctx: &mut Context<E>) {
             if !isec.is_alive() || slots.contains_key(&i) {
                 continue;
             }
-            let (data, rel_offset, nrels) = (isec.data(), isec.rel_offset as usize, isec.nrels as usize);
+            let (data, rel_offset, nrels) =
+                (isec.data(), isec.rel_offset as usize, isec.nrels as usize);
             for k in rel_offset..rel_offset + nrels {
                 let rel = ctx.objs[obj_idx].relocs[k];
                 let slot = match rel.target() {
@@ -2335,7 +2317,8 @@ fn objc_relative_method_lists<E: Arch>(ctx: &Context<E>) -> bool {
 /// Swift class uses as flags (FAST_IS_SWIFT_STABLE), so the record
 /// itself sits at the pointer with those bits cleared.
 fn objc_class_ro<E: Arch>(ctx: &Context<E>, cls: (u32, u64)) -> Option<(u32, u64)> {
-    let (isec, off) = objc_pointer_at(ctx, cls.0, cls.1 + 32).and_then(|r| objc_ref_location(ctx, r))?;
+    let (isec, off) =
+        objc_pointer_at(ctx, cls.0, cls.1 + 32).and_then(|r| objc_ref_location(ctx, r))?;
     Some((isec, off & !3))
 }
 
@@ -2368,7 +2351,9 @@ fn objc_pointer_at<E: Arch>(ctx: &Context<E>, isec: u32, off: u64) -> Option<Obj
         return None;
     }
     Some(match rel.target() {
-        RelocTarget::Sym(idx) => ObjcRef::Sym(ctx.objs[sec.file as usize].symbols[idx as usize], rel.addend),
+        RelocTarget::Sym(idx) => {
+            ObjcRef::Sym(ctx.objs[sec.file as usize].symbols[idx as usize], rel.addend)
+        }
         RelocTarget::Section(t) => ObjcRef::Isec(t, rel.addend as u64),
     })
 }
@@ -2474,14 +2459,18 @@ pub fn convert_objc_method_lists<E: Arch>(ctx: &mut Context<E>) {
         match h.sectname() {
             "__objc_classlist" | "__objc_nlclslist" => {
                 for off in (0..isec.size as u64).step_by(8) {
-                    if let Some(cls) = objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r)) {
+                    if let Some(cls) =
+                        objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r))
+                    {
                         visit_class(ctx, cls, &mut classes_seen, &mut note, &mut lists);
                     }
                 }
             }
             "__objc_catlist" | "__objc_nlcatlist" => {
                 for off in (0..isec.size as u64).step_by(8) {
-                    if let Some(cat) = objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r)) {
+                    if let Some(cat) =
+                        objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r))
+                    {
                         // category_t: name, cls, instanceMethods, classMethods.
                         note(ctx, objc_pointer_at(ctx, cat.0, cat.1 + 16), &mut lists);
                         note(ctx, objc_pointer_at(ctx, cat.0, cat.1 + 24), &mut lists);
@@ -2490,7 +2479,9 @@ pub fn convert_objc_method_lists<E: Arch>(ctx: &mut Context<E>) {
             }
             "__objc_protolist" => {
                 for off in (0..isec.size as u64).step_by(8) {
-                    if let Some(proto) = objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r)) {
+                    if let Some(proto) =
+                        objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r))
+                    {
                         // protocol_t: isa, name, protocols, then the four
                         // method lists.
                         for field in [24, 32, 40, 48] {
@@ -2501,7 +2492,9 @@ pub fn convert_objc_method_lists<E: Arch>(ctx: &mut Context<E>) {
             }
             "__objc_clsrolist" => {
                 for off in (0..isec.size as u64).step_by(8) {
-                    if let Some(ro) = objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r)) {
+                    if let Some(ro) =
+                        objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r))
+                    {
                         note(ctx, objc_pointer_at(ctx, ro.0, ro.1 + 32), &mut lists);
                     }
                 }
@@ -2522,7 +2515,8 @@ pub fn convert_objc_method_lists<E: Arch>(ctx: &mut Context<E>) {
     });
     let mut extra_of: hashbrown::HashMap<u32, usize> = hashbrown::HashMap::new();
     let stub_of: hashbrown::HashMap<Vec<u8>, usize> = ctx
-        .objc_stubs.symbols
+        .objc_stubs
+        .symbols
         .iter()
         .enumerate()
         .map(|(i, (_, sel))| (sel.as_bytes().to_vec(), i))
@@ -2537,7 +2531,10 @@ pub fn convert_objc_method_lists<E: Arch>(ctx: &mut Context<E>) {
         }
         let entsize_flags = u32::from_le_bytes(data[0..4].try_into().unwrap());
         let count = u32::from_le_bytes(data[4..8].try_into().unwrap()) as u64;
-        if entsize_flags & 0x8000_0000 != 0 || entsize_flags & 0xffff != 24 || 8 + 24 * count != data.len() as u64 {
+        if entsize_flags & 0x8000_0000 != 0
+            || entsize_flags & 0xffff != 24
+            || 8 + 24 * count != data.len() as u64
+        {
             continue;
         }
         let mut methods = Vec::with_capacity(count as usize);
@@ -2704,7 +2701,11 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
             _ => continue,
         };
         for off in (0..isec.size as u64).step_by(8) {
-            let Some(cls) = objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r)) else { continue };
+            let Some(cls) =
+                objc_pointer_at(ctx, i as u32, off).and_then(|r| objc_ref_location(ctx, r))
+            else {
+                continue;
+            };
             let ro = objc_class_ro(ctx, cls);
             let meta = objc_pointer_at(ctx, cls.0, cls.1).and_then(|r| objc_ref_location(ctx, r));
             let meta_ro = meta.and_then(|m| objc_class_ro(ctx, m));
@@ -2826,7 +2827,8 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
         let Some(r) = r else { return Some(Vec::new()) };
         let (isec, off) = objc_ref_location(ctx, r)?;
         let data = ctx.isecs[isec as usize].data();
-        let count = u64::from_le_bytes(data.get(off as usize..off as usize + 8)?.try_into().unwrap());
+        let count =
+            u64::from_le_bytes(data.get(off as usize..off as usize + 8)?.try_into().unwrap());
         (0..count).map(|i| objc_pointer_at(ctx, isec, off + 8 + 8 * i)).collect()
     };
     // A property list: entsize (16), count, then (name, attributes).
@@ -2834,15 +2836,21 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
         let Some(r) = r else { return Some(Vec::new()) };
         let (isec, off) = objc_ref_location(ctx, r)?;
         let data = ctx.isecs[isec as usize].data();
-        let entsize = u32::from_le_bytes(data.get(off as usize..off as usize + 4)?.try_into().unwrap());
-        let count = u32::from_le_bytes(data.get(off as usize + 4..off as usize + 8)?.try_into().unwrap()) as u64;
+        let entsize =
+            u32::from_le_bytes(data.get(off as usize..off as usize + 4)?.try_into().unwrap());
+        let count =
+            u32::from_le_bytes(data.get(off as usize + 4..off as usize + 8)?.try_into().unwrap())
+                as u64;
         if entsize != 16 {
             return None;
         }
         (0..count)
             .map(|i| {
                 let at = off + 8 + 16 * i;
-                Some((objc_pointer_at(ctx, isec, at)?, objc_pointer_at(ctx, isec, at + 8).unwrap_or(ObjcRef::Null)))
+                Some((
+                    objc_pointer_at(ctx, isec, at)?,
+                    objc_pointer_at(ctx, isec, at + 8).unwrap_or(ObjcRef::Null),
+                ))
             })
             .collect()
     };
@@ -2851,13 +2859,16 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
     let local = |ctx: &Context<E>, r: ObjcRef| -> bool {
         match r {
             ObjcRef::Null | ObjcRef::Isec(..) | ObjcRef::TailSelref(_) => true,
-            ObjcRef::Sym(id, _) => !ctx.symbols[id].is_imported() && ctx.symbols[id].input_section().is_some(),
+            ObjcRef::Sym(id, _) => {
+                !ctx.symbols[id].is_imported() && ctx.symbols[id].input_section().is_some()
+            }
         }
     };
 
     let mut methlist_hdr: Option<(u32, u32)> = None;
     let mut methlist_off: u64 = ctx
-        .objc_methlist.lists
+        .objc_methlist
+        .lists
         .last()
         .map(|l| ctx.isecs[l.isec as usize].offset as u64 + ctx.isecs[l.isec as usize].size as u64)
         .unwrap_or(0);
@@ -2918,7 +2929,11 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
             for &ci in cat_ids.iter() {
                 let (c, coff) = cats[ci].cat;
                 let ip = objc_pointer_at(ctx, c, coff + 40);
-                let cp = if ctx.isecs[c as usize].size >= coff as u32 + 56 { objc_pointer_at(ctx, c, coff + 48) } else { None };
+                let cp = if ctx.isecs[c as usize].size >= coff as u32 + 56 {
+                    objc_pointer_at(ctx, c, coff + 48)
+                } else {
+                    None
+                };
                 match (properties_of(ctx, ip), properties_of(ctx, cp)) {
                     (Some(a), Some(b)) => {
                         m.any_iprops |= ip.is_some();
@@ -2959,7 +2974,11 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
             }
         }
         if ok && !relative {
-            ok = m.imethods.iter().chain(&m.cmethods).all(|x| local(ctx, x.name) && local(ctx, x.types) && local(ctx, x.imp));
+            ok = m
+                .imethods
+                .iter()
+                .chain(&m.cmethods)
+                .all(|x| local(ctx, x.name) && local(ctx, x.types) && local(ctx, x.imp));
         }
         if ok {
             ok = m.protocols.iter().all(|&r| local(ctx, r))
@@ -2968,8 +2987,8 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
         // The class's and metaclass's data pointers must be rewritable
         // to point at new ro records. Nothing is changed until
         // everything checks out.
-        let ro_ok = objc_pointer_reloc(ctx, cls.0, cls.1 + 32).is_some()
-            && info.meta.1 == 0 || objc_pointer_reloc(ctx, info.meta.0, info.meta.1 + 32).is_some();
+        let ro_ok = objc_pointer_reloc(ctx, cls.0, cls.1 + 32).is_some() && info.meta.1 == 0
+            || objc_pointer_reloc(ctx, info.meta.0, info.meta.1 + 32).is_some();
         let ro_ok = ro_ok
             && ctx.isecs[ro.0 as usize].size as u64 >= ro.1 + 72
             && ctx.isecs[meta_ro.0 as usize].size as u64 >= meta_ro.1 + 72
@@ -2985,36 +3004,37 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
         }
 
         // Emit the merged lists.
-        let mut new_blob = |ctx: &mut Context<E>, sect: &'static str, fields: Vec<DataField>| -> u32 {
-            let (file, shndx) = ctx.add_synthetic_section(MachSection {
-                sectname: str_to_name(sect),
-                segname: str_to_name("__DATA"),
-                p2align: 3,
-                flags: 0,
-                ..Default::default()
-            });
-            let blob = DataBlob { sect, isec: 0, fields };
-            let size = blob.size();
-            ctx.isecs.push(InputSection {
-                file,
-                shndx,
-                p2align: 3,
-                input_addr: 0,
-                size: size as u32,
-                contents: 0,
-                rel_offset: 0,
-                nrels: 0,
-                output_section: u32::MAX,
-                offset: 0,
-                flags: InputSection::flags_placed(),
-                replacement: crate::input_sections::NO_REPLACEMENT,
-                unwind_offset: 0,
-                nunwind: 0,
-            });
-            let isec = (ctx.isecs.len() - 1) as u32;
-            ctx.data_blobs.push(DataBlob { isec, ..blob });
-            isec
-        };
+        let mut new_blob =
+            |ctx: &mut Context<E>, sect: &'static str, fields: Vec<DataField>| -> u32 {
+                let (file, shndx) = ctx.add_synthetic_section(MachSection {
+                    sectname: str_to_name(sect),
+                    segname: str_to_name("__DATA"),
+                    p2align: 3,
+                    flags: 0,
+                    ..Default::default()
+                });
+                let blob = DataBlob { sect, isec: 0, fields };
+                let size = blob.size();
+                ctx.isecs.push(InputSection {
+                    file,
+                    shndx,
+                    p2align: 3,
+                    input_addr: 0,
+                    size: size as u32,
+                    contents: 0,
+                    rel_offset: 0,
+                    nrels: 0,
+                    output_section: u32::MAX,
+                    offset: 0,
+                    flags: InputSection::flags_placed(),
+                    replacement: crate::input_sections::NO_REPLACEMENT,
+                    unwind_offset: 0,
+                    nunwind: 0,
+                });
+                let isec = (ctx.isecs.len() - 1) as u32;
+                ctx.data_blobs.push(DataBlob { isec, ..blob });
+                isec
+            };
         let mut new_methlist = |ctx: &mut Context<E>, methods: Vec<ObjcMethod>| -> u32 {
             if relative {
                 let (file, shndx) = *methlist_hdr.get_or_insert_with(|| {
@@ -3050,7 +3070,10 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
                 ctx.objc_methlist.lists.push(ObjcMethList { isec, methods });
                 isec
             } else {
-                let mut fields = vec![DataField::Bytes(24u32.to_le_bytes().to_vec()), DataField::Bytes((methods.len() as u32).to_le_bytes().to_vec())];
+                let mut fields = vec![
+                    DataField::Bytes(24u32.to_le_bytes().to_vec()),
+                    DataField::Bytes((methods.len() as u32).to_le_bytes().to_vec()),
+                ];
                 for m in &methods {
                     fields.push(DataField::Ptr(m.name));
                     fields.push(DataField::Ptr(m.types));
@@ -3080,7 +3103,8 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
 
         // ld64 names the merged lists after the class and its
         // categories: __OBJC_$_INSTANCE_METHODS_Foo(A|B).
-        let class_name = objc_cstring_at(ctx, objc_pointer_at(ctx, ro.0, ro.1 + 24)).unwrap_or_default();
+        let class_name =
+            objc_cstring_at(ctx, objc_pointer_at(ctx, ro.0, ro.1 + 24)).unwrap_or_default();
         let suffix = format!(
             "{}({})",
             class_name,
@@ -3090,10 +3114,19 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
             let name: &'static str = String::leak(format!("{prefix}{suffix}"));
             ctx.extra_local_syms.push((name, isec));
         };
-        let imethods = if m.any_imethods { Some(new_methlist(ctx, std::mem::take(&mut m.imethods))) } else { None };
-        let cmethods = if m.any_cmethods { Some(new_methlist(ctx, std::mem::take(&mut m.cmethods))) } else { None };
+        let imethods = if m.any_imethods {
+            Some(new_methlist(ctx, std::mem::take(&mut m.imethods)))
+        } else {
+            None
+        };
+        let cmethods = if m.any_cmethods {
+            Some(new_methlist(ctx, std::mem::take(&mut m.cmethods)))
+        } else {
+            None
+        };
         let protocols = if m.any_protocols {
-            let mut fields = vec![DataField::Bytes((m.protocols.len() as u64).to_le_bytes().to_vec())];
+            let mut fields =
+                vec![DataField::Bytes((m.protocols.len() as u64).to_le_bytes().to_vec())];
             fields.extend(m.protocols.iter().map(|&r| DataField::Ptr(r)));
             Some(new_blob(ctx, "__objc_const", fields))
         } else {
@@ -3109,7 +3142,10 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
             name_it(ctx, "__OBJC_CLASS_PROTOCOLS_$_", l);
         }
         let props = |ctx: &mut Context<E>, list: &[(ObjcRef, ObjcRef)]| -> u32 {
-            let mut fields = vec![DataField::Bytes(16u32.to_le_bytes().to_vec()), DataField::Bytes((list.len() as u32).to_le_bytes().to_vec())];
+            let mut fields = vec![
+                DataField::Bytes(16u32.to_le_bytes().to_vec()),
+                DataField::Bytes((list.len() as u32).to_le_bytes().to_vec()),
+            ];
             for &(n, a) in list {
                 fields.push(DataField::Ptr(n));
                 fields.push(DataField::Ptr(a));
@@ -3161,7 +3197,16 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
         // runtime calls while realizing the class (dropping it from
         // the rewritten record sent NetNewsWire's AppDelegate into a
         // garbage address in objc_copyClassList).
-        let rewrite_ro = |ctx: &mut Context<E>, ro: (u32, u64), methods: Option<u32>, protocols: Option<u32>, props: Option<u32>, new_blob: &mut dyn FnMut(&mut Context<E>, &'static str, Vec<DataField>) -> u32| {
+        let rewrite_ro = |ctx: &mut Context<E>,
+                          ro: (u32, u64),
+                          methods: Option<u32>,
+                          protocols: Option<u32>,
+                          props: Option<u32>,
+                          new_blob: &mut dyn FnMut(
+            &mut Context<E>,
+            &'static str,
+            Vec<DataField>,
+        ) -> u32| {
             let data = ctx.isecs[ro.0 as usize].data()[ro.1 as usize..ro.1 as usize + 16].to_vec();
             let flags = u32::from_le_bytes(data[0..4].try_into().unwrap());
             let has_swift_initializer = flags & (1 << 6) != 0;
@@ -3236,7 +3281,8 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
     // The category lists lose the merged entries: a subsection all of
     // whose entries merged goes away, one with survivors is rebuilt.
     for ls in &list_sects {
-        let merged: Vec<bool> = ls.entries.iter().map(|e| e.is_some_and(|ci| cats[ci].merged)).collect();
+        let merged: Vec<bool> =
+            ls.entries.iter().map(|e| e.is_some_and(|ci| cats[ci].merged)).collect();
         if !merged.iter().any(|&m| m) {
             continue;
         }
@@ -3328,10 +3374,17 @@ pub fn create_symbol_reexports<E: Arch>(ctx: &mut Context<E>) {
             error!("-reexported_symbols_list: undefined symbol: {}", crate::error::demangle(name));
         }
     }
-    let targets: Vec<_> = ctx.symbols.syms.iter().enumerate()
+    let targets: Vec<_> = ctx
+        .symbols
+        .syms
+        .iter()
+        .enumerate()
         .filter(|(_, sym)| {
             matches!(sym.file(), Some(FileId::Dylib(_)))
-                && ctx.args.reexported_symbols.iter()
+                && ctx
+                    .args
+                    .reexported_symbols
+                    .iter()
                     .any(|pat| crate::util::glob_match(pat, sym.name()))
         })
         .map(|(i, _)| i as u32)
@@ -3434,13 +3487,11 @@ pub fn add_synthetic_symbols<E: Arch>(ctx: &mut Context<E>) {
         }
         let parsed = if let Some(rest) = sym.name().strip_prefix("section$") {
             rest.split_once('$').and_then(|(which, rest)| {
-                rest.split_once('$').map(|(seg, sect)| {
-                    (which == "start", seg.to_string(), Some(sect.to_string()))
-                })
+                rest.split_once('$')
+                    .map(|(seg, sect)| (which == "start", seg.to_string(), Some(sect.to_string())))
             })
         } else if let Some(rest) = sym.name().strip_prefix("segment$") {
-            rest.split_once('$')
-                .map(|(which, seg)| (which == "start", seg.to_string(), None))
+            rest.split_once('$').map(|(which, seg)| (which == "start", seg.to_string(), None))
         } else {
             None
         };
@@ -3547,7 +3598,11 @@ fn output_section_rank(segname: &str, sectname: &str) -> u32 {
 /// The segment for read-only-after-fixup data: __DATA_CONST unless
 /// -no_data_const.
 fn data_seg<E: Arch>(ctx: &Context<E>) -> &'static str {
-    if ctx.args.data_const { "__DATA_CONST" } else { "__DATA" }
+    if ctx.args.data_const {
+        "__DATA_CONST"
+    } else {
+        "__DATA"
+    }
 }
 
 /// Sections a final link places in __DATA_CONST: data that needs no
@@ -3623,7 +3678,9 @@ fn output_section_for(
         ("__DATA", sect) if data_const && DATA_CONST_SECTIONS.contains(&sect) => {
             Some(("__DATA_CONST", String::leak(sect.to_string())))
         }
-        ("__DATA", sect @ ("__objc_protorefs" | "__objc_superrefs")) if data_const && objc_const_refs => {
+        ("__DATA", sect @ ("__objc_protorefs" | "__objc_superrefs"))
+            if data_const && objc_const_refs =>
+        {
             Some(("__DATA_CONST", String::leak(sect.to_string())))
         }
         _ => Some((intern_seg(segname), String::leak(sectname.to_string()))),
@@ -3653,7 +3710,10 @@ fn output_section_flags(segname: &str, sectname: &str, input: u32, relocatable: 
     // The two reference lists the runtime may still write keep the
     // flags they came with (coalesced, no-dead-strip) while in __DATA
     // of a final image; a -r output normalizes them like the rest.
-    if !relocatable && segname == "__DATA" && matches!(sectname, "__objc_protorefs" | "__objc_superrefs") {
+    if !relocatable
+        && segname == "__DATA"
+        && matches!(sectname, "__objc_protorefs" | "__objc_superrefs")
+    {
         return input & (SECTION_TYPE | S_ATTR_NO_DEAD_STRIP);
     }
     let mut ty = input & SECTION_TYPE;
@@ -3666,8 +3726,12 @@ fn output_section_flags(segname: &str, sectname: &str, input: u32, relocatable: 
     }
     if matches!(
         sectname,
-        "__objc_classlist" | "__objc_catlist" | "__objc_nlclslist" | "__objc_nlcatlist"
-            | "__objc_selrefs" | "__objc_classrefs"
+        "__objc_classlist"
+            | "__objc_catlist"
+            | "__objc_nlclslist"
+            | "__objc_nlcatlist"
+            | "__objc_selrefs"
+            | "__objc_classrefs"
     ) {
         attrs |= S_ATTR_NO_DEAD_STRIP;
     }
@@ -3730,7 +3794,8 @@ pub fn create_output_sections<E: Arch>(ctx: &mut Context<E>) {
                         Some(&id) => id,
                         None => {
                             let mut osec = OutputSection::new(out.0, out.1);
-                            osec.hdr.flags = output_section_flags(out.0, out.1, hdr.flags, relocatable);
+                            osec.hdr.flags =
+                                output_section_flags(out.0, out.1, hdr.flags, relocatable);
                             let id = OutputSectionId::new(ctx.output_sections.len() as u32);
                             ctx.output_sections.push(osec);
                             ctx.chunks.push(ChunkId::Output(id));
@@ -3760,7 +3825,8 @@ pub fn create_output_sections<E: Arch>(ctx: &mut Context<E>) {
             osec.hdr.p2align = osec.hdr.p2align.max(3);
         }
         osec.hdr.flags |=
-            output_section_flags(osec.hdr.segname, &osec.hdr.sectname, hdr.flags, relocatable) & !SECTION_TYPE;
+            output_section_flags(osec.hdr.segname, &osec.hdr.sectname, hdr.flags, relocatable)
+                & !SECTION_TYPE;
         osec.members.push(i as u32);
         ctx.isecs[i].set_output_section(ChunkId::Output(osec_id));
     }
@@ -3838,7 +3904,8 @@ pub fn create_output_sections<E: Arch>(ctx: &mut Context<E>) {
         let mut exec_total: u64 = 0;
         for osec in &ctx.output_sections {
             if osec.hdr.flags & (S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS) != 0 {
-                exec_total += osec.members.iter().map(|&id| ctx.isecs[id].size as u64 + 16).sum::<u64>();
+                exec_total +=
+                    osec.members.iter().map(|&id| ctx.isecs[id].size as u64 + 16).sum::<u64>();
             }
         }
         let need_thunks = exec_total > E::BRANCH_RANGE / 2 - 64 * 1024 * 1024;
@@ -3938,7 +4005,6 @@ pub fn create_output_sections<E: Arch>(ctx: &mut Context<E>) {
         ctx.chunks.push(ChunkId::ObjcStubs);
     }
     {
-
         // The stubs' selector strings and reference slots join the
         // sections of those names (as their tail): the Objective-C
         // runtime uniques the selectors of one __objc_selrefs section
@@ -3976,39 +4042,63 @@ pub fn create_output_sections<E: Arch>(ctx: &mut Context<E>) {
             id
         };
         let methname_size = ctx.objc_stubs.methname_data.len() as u64;
-        let selrefs_size = (ctx.objc_stubs.tail_slots + ctx.objc_stubs.extra_selrefs.len()) as u64 * 8;
+        let selrefs_size =
+            (ctx.objc_stubs.tail_slots + ctx.objc_stubs.extra_selrefs.len()) as u64 * 8;
         if methname_size > 0 {
-            let id = tail_section(ctx, "__TEXT", "__objc_methname", S_CSTRING_LITERALS, 0, Tail::ObjcMethname, methname_size);
+            let id = tail_section(
+                ctx,
+                "__TEXT",
+                "__objc_methname",
+                S_CSTRING_LITERALS,
+                0,
+                Tail::ObjcMethname,
+                methname_size,
+            );
             ctx.objc_stubs.methname = Some(id);
         }
         if selrefs_size > 0 {
-            let id = tail_section(ctx, "__DATA", "__objc_selrefs", S_LITERAL_POINTERS | S_ATTR_NO_DEAD_STRIP, 3, Tail::ObjcSelrefs, selrefs_size);
+            let id = tail_section(
+                ctx,
+                "__DATA",
+                "__objc_selrefs",
+                S_LITERAL_POINTERS | S_ATTR_NO_DEAD_STRIP,
+                3,
+                Tail::ObjcSelrefs,
+                selrefs_size,
+            );
             ctx.objc_stubs.selrefs = Some(id);
         }
-    // Synthesized Objective-C records go in the tail of the section
-    // they name; each blob's subsection is placed there.
-    if !ctx.data_blobs.is_empty() {
-        let mut sects: Vec<&'static str> = ctx.data_blobs.iter().map(|b| b.sect).collect();
-        sects.sort();
-        sects.dedup();
-        for sect in sects {
-            let (seg, out) = output_section_for(false, ctx.args.data_const, objc_refs_are_const(ctx), "__DATA", sect).unwrap();
-            let flags = output_section_flags(seg, out, 0, false);
-            let mut size = 0u64;
-            let mut offs = Vec::new();
-            for b in ctx.data_blobs.iter().filter(|b| b.sect == sect) {
-                size = align_to(size, 8);
-                offs.push((b.isec, size));
-                size += b.size();
-            }
-            let id = tail_section(ctx, seg, out, flags, 3, Tail::DataBlobs, size);
-            let tail_off = ctx.output_section(id).tail_off;
-            for (isec, off) in offs {
-                ctx.isecs[isec as usize].set_output_section(ChunkId::Output(id));
-                ctx.isecs[isec as usize].offset = (tail_off + off) as u32;
+        // Synthesized Objective-C records go in the tail of the section
+        // they name; each blob's subsection is placed there.
+        if !ctx.data_blobs.is_empty() {
+            let mut sects: Vec<&'static str> = ctx.data_blobs.iter().map(|b| b.sect).collect();
+            sects.sort();
+            sects.dedup();
+            for sect in sects {
+                let (seg, out) = output_section_for(
+                    false,
+                    ctx.args.data_const,
+                    objc_refs_are_const(ctx),
+                    "__DATA",
+                    sect,
+                )
+                .unwrap();
+                let flags = output_section_flags(seg, out, 0, false);
+                let mut size = 0u64;
+                let mut offs = Vec::new();
+                for b in ctx.data_blobs.iter().filter(|b| b.sect == sect) {
+                    size = align_to(size, 8);
+                    offs.push((b.isec, size));
+                    size += b.size();
+                }
+                let id = tail_section(ctx, seg, out, flags, 3, Tail::DataBlobs, size);
+                let tail_off = ctx.output_section(id).tail_off;
+                for (isec, off) in offs {
+                    ctx.isecs[isec as usize].set_output_section(ChunkId::Output(id));
+                    ctx.isecs[isec as usize].offset = (tail_off + off) as u32;
+                }
             }
         }
-    }
     }
 
     if !ctx.objc_methlist.lists.is_empty() {
@@ -4026,7 +4116,9 @@ pub fn create_output_sections<E: Arch>(ctx: &mut Context<E>) {
             }
         }
         let mut order: Vec<usize> = (0..ctx.objc_methlist.lists.len()).collect();
-        order.sort_by_key(|&i| (name_of.get(&ctx.objc_methlist.lists[i].isec).copied().unwrap_or(""), i));
+        order.sort_by_key(|&i| {
+            (name_of.get(&ctx.objc_methlist.lists[i].isec).copied().unwrap_or(""), i)
+        });
         let mut off = 0u64;
         for i in order {
             let isec = ctx.objc_methlist.lists[i].isec as usize;
@@ -4081,12 +4173,8 @@ pub fn create_output_sections<E: Arch>(ctx: &mut Context<E>) {
     // must agree, the Swift language version is the newest, and the
     // category-class-properties bit holds only if every Objective-C
     // object has it.
-    let infos: Vec<u32> = ctx
-        .objs
-        .iter()
-        .filter(|o| o.is_alive)
-        .filter_map(|o| o.objc_image_info)
-        .collect();
+    let infos: Vec<u32> =
+        ctx.objs.iter().filter(|o| o.is_alive).filter_map(|o| o.objc_image_info).collect();
     if !infos.is_empty() {
         let mut swift_version = 0;
         for &flags in &infos {
@@ -4312,7 +4400,14 @@ pub fn plan_object_stabs<E: Arch>(
             n.n_sect != 0
                 && matches!(
                     n.n_type,
-                    N_FUN | N_BNSYM | N_ENSYM | N_GSYM | N_STSYM | N_LCSYM | N_SLINE | N_ECOMM
+                    N_FUN
+                        | N_BNSYM
+                        | N_ENSYM
+                        | N_GSYM
+                        | N_STSYM
+                        | N_LCSYM
+                        | N_SLINE
+                        | N_ECOMM
                         | N_ECOML
                 )
         };
@@ -4329,9 +4424,10 @@ pub fn plan_object_stabs<E: Arch>(
             // the unit's end.
             ent.n_strx = if name.is_empty() { 1 } else { 0 };
             if addressed(nlist) {
-                let placed = crate::input_files::find_subsec(&ctx.isecs, &obj.subsecs, nlist.n_value)
-                    .map(|(isec, off)| (ctx.resolve_isec(isec), off))
-                    .filter(|&(isec, _)| ctx.isecs[isec].is_alive());
+                let placed =
+                    crate::input_files::find_subsec(&ctx.isecs, &obj.subsecs, nlist.n_value)
+                        .map(|(isec, off)| (ctx.resolve_isec(isec), off))
+                        .filter(|&(isec, _)| ctx.isecs[isec].is_alive());
                 let Some((isec, off)) = placed else {
                     // Dead code: drop the note, and a function's size
                     // entry with it.
@@ -4373,11 +4469,7 @@ pub fn plan_object_stabs<E: Arch>(
     for name in [dir, file] {
         out.push((
             String::leak(name) as &'static str,
-            NList {
-                n_strx: 0,
-                n_type: N_SO,
-                ..Default::default()
-            },
+            NList { n_strx: 0, n_type: N_SO, ..Default::default() },
             None,
         ));
     }
@@ -4391,8 +4483,7 @@ pub fn plan_object_stabs<E: Arch>(
     // sandbox) can still find their objects relative to a
     // debugger's source map. "." means the current directory.
     if let Some(prefix) = &ctx.args.oso_prefix {
-        let prefix: &str =
-            if prefix == "." { &format!("{cwd}/") } else { prefix };
+        let prefix: &str = if prefix == "." { &format!("{cwd}/") } else { prefix };
         if let Some(rest) = oso_name.strip_prefix(prefix) {
             oso_name = rest.to_string();
         }
@@ -4406,13 +4497,7 @@ pub fn plan_object_stabs<E: Arch>(
         .map_or(0, |d| d.as_secs());
     out.push((
         String::leak(std::mem::take(&mut oso_name)),
-        NList {
-            n_strx: 0,
-            n_type: N_OSO,
-            n_sect: E::CPUSUBTYPE as u8,
-            n_desc: 1,
-            n_value: mtime,
-        },
+        NList { n_strx: 0, n_type: N_OSO, n_sect: E::CPUSUBTYPE as u8, n_desc: 1, n_value: mtime },
         None,
     ));
 
@@ -4433,9 +4518,7 @@ pub fn plan_object_stabs<E: Arch>(
 
         let stab_name = sym.name();
         let is_text = ctx.hdr_of(isec).segname() == "__TEXT"
-            && ctx.hdr_of(isec).flags
-                & (S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS)
-                != 0;
+            && ctx.hdr_of(isec).flags & (S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS) != 0;
         if is_text {
             // ld64's shape: N_BNSYM, the N_FUN pair (the function's
             // address, then its size), N_ENSYM. Its stab reader takes
@@ -4444,42 +4527,22 @@ pub fn plan_object_stabs<E: Arch>(
             let sect = ctx.isec_n_sect(isec);
             out.push((
                 "",
-                NList {
-                    n_strx: 1,
-                    n_type: N_BNSYM,
-                    n_sect: sect,
-                    ..Default::default()
-                },
+                NList { n_strx: 1, n_type: N_BNSYM, n_sect: sect, ..Default::default() },
                 Some(sym_id),
             ));
             out.push((
                 stab_name,
-                NList {
-                    n_strx: 0,
-                    n_type: N_FUN,
-                    n_sect: sect,
-                    ..Default::default()
-                },
+                NList { n_strx: 0, n_type: N_FUN, n_sect: sect, ..Default::default() },
                 Some(sym_id),
             ));
             out.push((
                 "",
-                NList {
-                    n_strx: 1,
-                    n_type: N_FUN,
-                    n_value: isec.size as u64,
-                    ..Default::default()
-                },
+                NList { n_strx: 1, n_type: N_FUN, n_value: isec.size as u64, ..Default::default() },
                 None,
             ));
             out.push((
                 "",
-                NList {
-                    n_strx: 1,
-                    n_type: N_ENSYM,
-                    n_sect: sect,
-                    ..Default::default()
-                },
+                NList { n_strx: 1, n_type: N_ENSYM, n_sect: sect, ..Default::default() },
                 Some(sym_id),
             ));
         } else {
@@ -4497,16 +4560,7 @@ pub fn plan_object_stabs<E: Arch>(
     }
 
     // An N_SO with an empty name closes the object's stabs.
-    out.push((
-        "",
-        NList {
-            n_strx: 1,
-            n_type: N_SO,
-            n_sect: 1,
-            ..Default::default()
-        },
-        None,
-    ));
+    out.push(("", NList { n_strx: 1, n_type: N_SO, n_sect: 1, ..Default::default() }, None));
     out
 }
 
@@ -4531,19 +4585,11 @@ pub fn create_output_symtab<E: Arch>(
     // its loop assigned (the "" and "-" placeholders).
     let mut names: Vec<&'static str> = Vec::new();
 
-
     // Swift AST paths for the debugger (-add_ast_path), as N_AST stabs.
     for path in &ctx.args.add_ast_paths {
         let n_strx = 0;
         names.push(String::leak(path.clone()));
-        data.entries.push((
-            NList {
-                n_strx,
-                n_type: N_AST,
-                ..Default::default()
-            },
-            None,
-        ));
+        data.entries.push((NList { n_strx, n_type: N_AST, ..Default::default() }, None));
     }
 
     let __t = std::time::Instant::now();
@@ -4553,9 +4599,8 @@ pub fn create_output_symtab<E: Arch>(
     // functions and globals ended up, and the debugger reads the DWARF
     // from the objects.
     if !ctx.args.strip_debug {
-        let cwd = std::env::current_dir()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        let cwd =
+            std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
         let cwd = &cwd;
 
         // Each object's stab run is independent; plan them in
@@ -4627,7 +4672,10 @@ pub fn create_output_symtab<E: Arch>(
                 let r = obj.local_range();
                 for (nlist, &sym_id) in obj.nlists[r.clone()].iter().zip(&obj.symbols[r]) {
                     let sym = &ctx_ref.symbols[sym_id];
-                    if nlist.is_stab() || nlist.is_extern() || !keep_local_symbol_in(ctx_ref, sym.name(), sym.input_section()) {
+                    if nlist.is_stab()
+                        || nlist.is_extern()
+                        || !keep_local_symbol_in(ctx_ref, sym.name(), sym.input_section())
+                    {
                         continue;
                     }
                     // -non_global_symbols_keep_list / _strip_list
@@ -4647,7 +4695,9 @@ pub fn create_output_symtab<E: Arch>(
                     }
                     let Some(isec) = sym.input_section().map(|i| i as usize) else { continue };
                     let isec = ctx_ref.resolve_isec(isec);
-                    if !matches!(sym.file(), Some(FileId::Obj(_))) || !ctx_ref.isecs[isec].is_alive() {
+                    if !matches!(sym.file(), Some(FileId::Obj(_)))
+                        || !ctx_ref.isecs[isec].is_alive()
+                    {
                         continue;
                     }
                     let ent = NList {
@@ -4779,11 +4829,9 @@ pub fn create_output_symtab<E: Arch>(
         let n_strx = 0;
         names.push(sym.name());
         let (n_type, n_sect, mut n_desc) = match (sym.file(), sym.input_section()) {
-            (_, Some(isec)) => (
-                N_SECT | N_EXT,
-                ctx.isec_n_sect(&ctx.isecs[ctx.resolve_isec(isec as usize)]),
-                0,
-            ),
+            (_, Some(isec)) => {
+                (N_SECT | N_EXT, ctx.isec_n_sect(&ctx.isecs[ctx.resolve_isec(isec as usize)]), 0)
+            }
             // A synthesized symbol with no section (__mh_execute_header)
             // sits in the first section: the mach header.
             (Some(FileId::Obj(o)), None) if ctx.is_internal(o as usize) => {
@@ -4794,13 +4842,7 @@ pub fn create_output_symtab<E: Arch>(
         if sym.is_weak_def() {
             n_desc |= N_WEAK_DEF;
         }
-        let ent = NList {
-            n_strx,
-            n_type,
-            n_sect,
-            n_desc,
-            n_value: 0,
-        };
+        let ent = NList { n_strx, n_type, n_sect, n_desc, n_value: 0 };
         data.entries.push((ent, Some(i as u32)));
     }
     data.nextdef = data.entries.len() as u32 - data.nlocal;
@@ -4817,9 +4859,7 @@ pub fn create_output_symtab<E: Arch>(
 
     for &i in &undefs {
         let sym = &ctx.symbols[i];
-        let Some(FileId::Dylib(dylib)) = sym.file() else {
-            unreachable!()
-        };
+        let Some(FileId::Dylib(dylib)) = sym.file() else { unreachable!() };
         let n_strx = 0;
         names.push(sym.name());
         // A flat-namespace import records the DYNAMIC_LOOKUP ordinal, a
@@ -4829,13 +4869,7 @@ pub fn create_output_symtab<E: Arch>(
         if sym.is_weak_ref() {
             n_desc |= N_WEAK_REF;
         }
-        let ent = NList {
-            n_strx,
-            n_type: N_UNDF | N_EXT,
-            n_sect: 0,
-            n_desc,
-            n_value: 0,
-        };
+        let ent = NList { n_strx, n_type: N_UNDF | N_EXT, n_sect: 0, n_desc, n_value: 0 };
         data.entries.push((ent, None));
     }
     data.nundef = undefs.len() as u32;
@@ -4921,11 +4955,7 @@ pub fn create_output_symtab<E: Arch>(
                     });
                     resolved.push((e, idx));
                 }
-                ShardOut {
-                    uniq,
-                    blob_len,
-                    resolved,
-                }
+                ShardOut { uniq, blob_len, resolved }
             })
             .collect();
 
@@ -5037,24 +5067,28 @@ pub fn set_osec_offsets<E: Arch>(ctx: &mut Context<E>) {
             // The name sort feeds only the symtab and the trie, so it
             // runs inside their arm of the task group and the fixup
             // streams, function starts and data-in-code build under it.
-            let sorted_globals_of = || -> Vec<crate::symbol::SymbolId> { t!("globals_sort", {
-                use rayon::prelude::*;
-                let mut v: Vec<crate::symbol::SymbolId> = (0..shared.symbols.syms.len())
-                    .into_par_iter()
-                    .filter(|&i| {
-                        let sym = &shared.symbols[i];
-                        sym.is_extern()
-                            && !sym.is_private_extern()
-                            && matches!(sym.file(), Some(FileId::Obj(_)))
-                            && sym.input_section().map(|i| i as usize).is_none_or(|isec| {
-                                shared.isecs[shared.resolve_isec(isec)].is_alive()
-                            })
-                    })
-                    .map(|i| i as u32)
-                    .collect();
-                v.par_sort_unstable_by_key(|&i| crate::util::name_sort_key(shared.symbols[i].name()));
-                v
-            })};
+            let sorted_globals_of = || -> Vec<crate::symbol::SymbolId> {
+                t!("globals_sort", {
+                    use rayon::prelude::*;
+                    let mut v: Vec<crate::symbol::SymbolId> = (0..shared.symbols.syms.len())
+                        .into_par_iter()
+                        .filter(|&i| {
+                            let sym = &shared.symbols[i];
+                            sym.is_extern()
+                                && !sym.is_private_extern()
+                                && matches!(sym.file(), Some(FileId::Obj(_)))
+                                && sym.input_section().map(|i| i as usize).is_none_or(|isec| {
+                                    shared.isecs[shared.resolve_isec(isec)].is_alive()
+                                })
+                        })
+                        .map(|i| i as u32)
+                        .collect();
+                    v.par_sort_unstable_by_key(|&i| {
+                        crate::util::name_sort_key(shared.symbols[i].name())
+                    });
+                    v
+                })
+            };
             let ((symtab, trie), (streams, (starts, dice))) = rayon::join(
                 || {
                     let sorted_globals = sorted_globals_of();
@@ -5064,7 +5098,10 @@ pub fn set_osec_offsets<E: Arch>(ctx: &mut Context<E>) {
                         || {
                             t!(
                                 "trie_encode",
-                                output_chunks::export_trie::encode_export_trie(shared, sorted_globals)
+                                output_chunks::export_trie::encode_export_trie(
+                                    shared,
+                                    sorted_globals
+                                )
                             )
                         },
                     )
@@ -5079,18 +5116,39 @@ pub fn set_osec_offsets<E: Arch>(ctx: &mut Context<E>) {
                                 ))
                             } else {
                                 let (rebase, bind) = rayon::join(
-                                    || t!("rebase_info", output_chunks::dyld_info::build_rebase_info(shared)),
-                                    || t!("bind_info", output_chunks::dyld_info::build_bind_info(shared)),
+                                    || {
+                                        t!(
+                                            "rebase_info",
+                                            output_chunks::dyld_info::build_rebase_info(shared)
+                                        )
+                                    },
+                                    || {
+                                        t!(
+                                            "bind_info",
+                                            output_chunks::dyld_info::build_bind_info(shared)
+                                        )
+                                    },
                                 );
-                                let (lazy, lazy_offsets) = output_chunks::dyld_info::build_lazy_bind_info(shared);
+                                let (lazy, lazy_offsets) =
+                                    output_chunks::dyld_info::build_lazy_bind_info(shared);
                                 let weak = output_chunks::dyld_info::build_weak_bind_info(shared);
                                 Streams::Classic(rebase, bind, weak, lazy, lazy_offsets)
                             }
                         },
                         || {
                             rayon::join(
-                                || t!("function_starts", output_chunks::misc::build_function_starts(shared)),
-                                || t!("data_in_code", output_chunks::misc::build_data_in_code(shared)),
+                                || {
+                                    t!(
+                                        "function_starts",
+                                        output_chunks::misc::build_function_starts(shared)
+                                    )
+                                },
+                                || {
+                                    t!(
+                                        "data_in_code",
+                                        output_chunks::misc::build_data_in_code(shared)
+                                    )
+                                },
                             )
                         },
                     )
@@ -5248,10 +5306,7 @@ pub fn set_osec_offsets<E: Arch>(ctx: &mut Context<E>) {
         .iter()
         .map(|&id| ctx.chunk_header(id))
         .filter(|hdr| {
-            matches!(
-                hdr.flags & SECTION_TYPE,
-                S_THREAD_LOCAL_REGULAR | S_THREAD_LOCAL_ZEROFILL
-            )
+            matches!(hdr.flags & SECTION_TYPE, S_THREAD_LOCAL_REGULAR | S_THREAD_LOCAL_ZEROFILL)
         })
         .map(|hdr| hdr.addr)
         .min()
@@ -5342,7 +5397,9 @@ pub fn resolve_entry<E: Arch>(ctx: &mut Context<E>) {
         // names the symbol's stub, as ld64 does.
         Some(id) if ctx.symbols[id].is_imported() => ctx.entry_addr = ctx.sym_stub_addr(id),
         Some(id) if ctx.symbols[id].is_defined() => ctx.entry_addr = ctx.sym_addr(id),
-        _ => error!("undefined symbol for entry point: {}", crate::error::demangle(&ctx.args.entry)),
+        _ => {
+            error!("undefined symbol for entry point: {}", crate::error::demangle(&ctx.args.entry))
+        }
     }
 }
 
@@ -5414,7 +5471,11 @@ fn ensure_stub_binder<E: Arch>(ctx: &mut Context<E>) {
         nunwind: 0,
     });
     let isec = (ctx.isecs.len() - 1) as u32;
-    ctx.data_blobs.push(DataBlob { sect: "__data", isec, fields: vec![DataField::Bytes(vec![0; 8])] });
+    ctx.data_blobs.push(DataBlob {
+        sect: "__data",
+        isec,
+        fields: vec![DataField::Bytes(vec![0; 8])],
+    });
     ctx.stub_helper.dyld_private_isec = isec;
 }
 
@@ -5432,7 +5493,11 @@ fn ensure_stub_binder<E: Arch>(ctx: &mut Context<E>) {
 /// produced: everything between the header and the symbol table after
 /// the copy and its fix-ups, the symbol and string tables after
 /// copy_symtab, the header after the UUID, the signature last.
-pub fn copy_chunks<E: Arch>(ctx: &Context<E>, buf: &mut [u8], out: &crate::output_file::OutputFile) {
+pub fn copy_chunks<E: Arch>(
+    ctx: &Context<E>,
+    buf: &mut [u8],
+    out: &crate::output_file::OutputFile,
+) {
     use rayon::prelude::*;
 
     let mut jobs: Vec<(ChunkId, usize, usize)> = ctx
@@ -5465,9 +5530,10 @@ pub fn copy_chunks<E: Arch>(ctx: &Context<E>, buf: &mut [u8], out: &crate::outpu
         consumed = off + size;
     }
 
-    t!("par-copy", slices
-        .into_par_iter()
-        .for_each(|(id, slice)| output_chunks::copy_buf(ctx, id, slice)));
+    t!(
+        "par-copy",
+        slices.into_par_iter().for_each(|(id, slice)| output_chunks::copy_buf(ctx, id, slice))
+    );
 
     if ctx.use_chained_fixups() {
         t!("write-chains", output_chunks::chained_fixups::write_fixup_chains(ctx, buf));

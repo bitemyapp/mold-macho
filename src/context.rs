@@ -7,8 +7,8 @@ use crate::arch::Arch;
 use crate::cmdline::Args;
 use crate::error;
 use crate::input_files::{DylibFile, FileId, ObjectFile};
-use crate::macho::{S_THREAD_LOCAL_REGULAR, S_THREAD_LOCAL_ZEROFILL};
 use crate::input_sections::{InputSection, Reloc, RelocTarget};
+use crate::macho::{S_THREAD_LOCAL_REGULAR, S_THREAD_LOCAL_ZEROFILL};
 use crate::output_chunks::chained_fixups::ChainedFixupsSection;
 use crate::output_chunks::dyld_info::{
     BindInfoSection, LazyBindInfoSection, RebaseInfoSection, WeakBindInfoSection,
@@ -619,7 +619,9 @@ impl<E: Arch> Context<E> {
     /// Returns the input section a relocation's target lives in, if any.
     pub fn reloc_target_isec(&self, obj: usize, rel: &Reloc) -> Option<usize> {
         match rel.target() {
-            RelocTarget::Sym(idx) => self.symbols[self.objs[obj].symbols[idx as usize]].input_section().map(|i| i as usize),
+            RelocTarget::Sym(idx) => self.symbols[self.objs[obj].symbols[idx as usize]]
+                .input_section()
+                .map(|i| i as usize),
             RelocTarget::Section(idx) => Some(idx as usize),
         }
     }

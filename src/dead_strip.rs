@@ -10,9 +10,9 @@
 
 use crate::arch::Arch;
 use crate::context::Context;
+use crate::input_files::FileId;
 use crate::input_sections::RelocTarget;
 use crate::macho::*;
-use crate::input_files::FileId;
 
 /// Removes subsections that are not reachable from the roots: the entry
 /// point, exported symbols (for a dylib), and everything the format
@@ -27,16 +27,17 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
     let mut stack: Vec<usize> = Vec::new();
     let redirects: Vec<usize> = {
         use rayon::prelude::*;
-        (0..ctx.isecs.len())
-            .into_par_iter()
-            .map(|i| ctx.resolve_isec(i))
-            .collect()
+        (0..ctx.isecs.len()).into_par_iter().map(|i| ctx.resolve_isec(i)).collect()
     };
     let redirects = &redirects;
     // Liveness is marked in place, on the section's atomic visited bit
     // (mold-rust's IS_VISITED), rather than in side arrays copied back
     // at the end.
-    let mark = move |ctx: &Context<E>, pred: &mut Vec<usize>, stack: &mut Vec<usize>, id: usize, from: usize| {
+    let mark = move |ctx: &Context<E>,
+                     pred: &mut Vec<usize>,
+                     stack: &mut Vec<usize>,
+                     id: usize,
+                     from: usize| {
         let id = redirects[id];
         if ctx.isecs[id].mark_visited() {
             if !pred.is_empty() {
@@ -92,12 +93,19 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
                 let is_root = sym.no_dead_strip()
                     || ((ctx.args.output_type != MH_EXECUTE
                         || ctx.args.export_dynamic
-                        || ctx.args.exported_symbols.as_ref()
+                        || ctx
+                            .args
+                            .exported_symbols
+                            .as_ref()
                             .is_some_and(|names| names.iter().any(|name| name == sym.name())))
                         && sym.is_extern()
                         && !sym.is_private_extern()
                         && sym.is_defined());
-                if is_root { sym.input_section().map(|i| i as usize) } else { None }
+                if is_root {
+                    sym.input_section().map(|i| i as usize)
+                } else {
+                    None
+                }
             })
             .collect()
     };
@@ -132,7 +140,8 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
         for rel in ctx.isec_relocs(id) {
             match rel.target() {
                 RelocTarget::Sym(idx) => {
-                    let sym = &ctx.symbols[ctx.objs[ctx.isecs[id].file as usize].symbols[idx as usize]];
+                    let sym =
+                        &ctx.symbols[ctx.objs[ctx.isecs[id].file as usize].symbols[idx as usize]];
                     if let Some(isec) = sym.input_section().map(|i| i as usize) {
                         out.push(isec);
                     }
@@ -188,8 +197,8 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
             for rel in gc.ctx.isec_relocs(id) {
                 match rel.target() {
                     RelocTarget::Sym(idx) => {
-                        let sym =
-                            &gc.ctx.symbols[gc.ctx.objs[gc.ctx.isecs[id].file as usize].symbols[idx as usize]];
+                        let sym = &gc.ctx.symbols
+                            [gc.ctx.objs[gc.ctx.isecs[id].file as usize].symbols[idx as usize]];
                         if let Some(isec) = sym.input_section().map(|i| i as usize) {
                             targets.push(isec);
                         }
@@ -198,8 +207,7 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
                 }
             }
             let isec = &gc.ctx.isecs[id];
-            let recs =
-                isec.unwind_offset as usize..(isec.unwind_offset + isec.nunwind) as usize;
+            let recs = isec.unwind_offset as usize..(isec.unwind_offset + isec.nunwind) as usize;
             for rec in &gc.ctx.unwind_records[recs] {
                 if let Some((lsda, _)) = rec.lsda() {
                     targets.push(lsda);
@@ -238,8 +246,7 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
             for id in batch {
                 visit_section(gc, id, 0, scope, &mut next);
                 if next.len() >= GC_BATCH {
-                    let found =
-                        std::mem::replace(&mut next, Vec::with_capacity(GC_BATCH));
+                    let found = std::mem::replace(&mut next, Vec::with_capacity(GC_BATCH));
                     scope.spawn(move |scope| visit_batch(gc, found, scope));
                 }
             }
@@ -251,9 +258,7 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
         let gc = &gc;
         let roots = std::mem::take(&mut stack);
         rayon::scope(|scope| {
-            roots
-                .par_chunks(GC_BATCH)
-                .for_each(|batch| visit_batch(gc, batch.to_vec(), scope));
+            roots.par_chunks(GC_BATCH).for_each(|batch| visit_batch(gc, batch.to_vec(), scope));
         });
     } else {
         while let Some(id) = stack.pop() {
@@ -304,13 +309,13 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
     crate::passes::refresh_unwind_ranges(ctx);
 }
 
-
 /// Refresh symbol usage after atom liveness is known. Undefined references
 /// in removed atoms must neither cause errors nor become dynamic imports.
 pub fn mark_live_references<E: Arch>(ctx: &mut Context<E>) {
     use rayon::prelude::*;
     ctx.symbols.syms.par_iter().for_each(|sym| sym.unmark());
-    ctx.isecs.par_iter()
+    ctx.isecs
+        .par_iter()
         .filter(|isec| isec.is_alive() && isec.replacement == crate::input_sections::NO_REPLACEMENT)
         .for_each(|isec| {
             for rel in crate::input_files::isec_relocs_of(&ctx.objs, isec) {
@@ -332,7 +337,10 @@ pub fn mark_live_references<E: Arch>(ctx: &mut Context<E>) {
     if let Some(id) = ctx.objc_stubs.msgsend_sym {
         ctx.symbols[id].mark();
     }
-    for name in ctx.args.forced_undefined.iter()
+    for name in ctx
+        .args
+        .forced_undefined
+        .iter()
         .chain((ctx.args.output_type == MH_EXECUTE).then_some(&ctx.args.entry))
         .chain(ctx.args.aliases.iter().map(|(base, _)| base))
     {
@@ -380,11 +388,9 @@ fn print_why_live<E: Arch>(ctx: &Context<E>, pred: &[usize]) {
     }
     let describe = |isec: usize| -> String {
         let sec = &ctx.isecs[isec];
-        let name = name_of
-            .get(&isec)
-            .copied()
-            .map(String::from)
-            .unwrap_or_else(|| format!("{},{}", ctx.hdr_of(sec).segname(), ctx.hdr_of(sec).sectname()));
+        let name = name_of.get(&isec).copied().map(String::from).unwrap_or_else(|| {
+            format!("{},{}", ctx.hdr_of(sec).segname(), ctx.hdr_of(sec).sectname())
+        });
         if ctx.is_internal(sec.file as usize) {
             return name;
         }
@@ -402,7 +408,11 @@ fn print_why_live<E: Arch>(ctx: &Context<E>, pred: &[usize]) {
         if !ctx.isecs[isec].is_alive() {
             continue;
         }
-        println!("{} from {}", sym.name(), crate::passes::file_display(&ctx.objs[ctx.isecs[isec].file as usize]));
+        println!(
+            "{} from {}",
+            sym.name(),
+            crate::passes::file_display(&ctx.objs[ctx.isecs[isec].file as usize])
+        );
         let mut indent = 1;
         while pred[isec] != usize::MAX {
             isec = pred[isec];

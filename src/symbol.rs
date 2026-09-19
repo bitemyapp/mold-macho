@@ -2,8 +2,6 @@
 
 use crate::input_files::FileId;
 
-
-
 /// A symbol index, u32 as in mold-rust: every per-symbol and
 /// per-nlist vector of ids is half the size of a usize one.
 pub type SymbolId = u32;
@@ -165,20 +163,44 @@ macro_rules! sym_flag {
 impl Symbol {
     sym_flag!(is_extern, set_is_extern, F_EXTERN, "An external (global) symbol.");
     sym_flag!(is_weak_def, set_is_weak_def, F_WEAK_DEF, "A weak definition.");
-    sym_flag!(is_imported, set_is_imported, F_IMPORTED,
-        "The definition is in a dylib, so references need dynamic binding.");
-    sym_flag!(is_used, set_is_used, F_USED,
-        "Some relocation refers to this symbol, so an unresolved symbol is an error.");
+    sym_flag!(
+        is_imported,
+        set_is_imported,
+        F_IMPORTED,
+        "The definition is in a dylib, so references need dynamic binding."
+    );
+    sym_flag!(
+        is_used,
+        set_is_used,
+        F_USED,
+        "Some relocation refers to this symbol, so an unresolved symbol is an error."
+    );
     sym_flag!(is_private_extern, set_is_private_extern, F_PRIVATE_EXTERN,
         "A private external symbol (visibility hidden): resolves globally at link time but is neither exported nor kept as an external symbol.");
-    sym_flag!(is_strong_ref, set_is_strong_ref, F_STRONG_REF,
-        "Referenced non-weakly by some object.");
-    sym_flag!(is_weak_ref, set_is_weak_ref, F_WEAK_REF,
-        "References may go unresolved at load time (a weak import).");
-    sym_flag!(no_dead_strip, set_no_dead_strip, F_NO_DEAD_STRIP,
-        "The symbol must survive dead-stripping.");
-    sym_flag!(is_common, set_is_common, F_COMMON,
-        "A tentative definition (common symbol) not yet converted; `value` holds its size.");
+    sym_flag!(
+        is_strong_ref,
+        set_is_strong_ref,
+        F_STRONG_REF,
+        "Referenced non-weakly by some object."
+    );
+    sym_flag!(
+        is_weak_ref,
+        set_is_weak_ref,
+        F_WEAK_REF,
+        "References may go unresolved at load time (a weak import)."
+    );
+    sym_flag!(
+        no_dead_strip,
+        set_no_dead_strip,
+        F_NO_DEAD_STRIP,
+        "The symbol must survive dead-stripping."
+    );
+    sym_flag!(
+        is_common,
+        set_is_common,
+        F_COMMON,
+        "A tentative definition (common symbol) not yet converted; `value` holds its size."
+    );
 
     /// Atomically sets the transient mark; true if it was clear (the
     /// caller won the race to claim this symbol).
@@ -343,8 +365,7 @@ impl std::hash::Hasher for PassThroughHasher {
     }
 }
 
-type ShardMap =
-    hashbrown::HashMap<Key, SymbolId, std::hash::BuildHasherDefault<PassThroughHasher>>;
+type ShardMap = hashbrown::HashMap<Key, SymbolId, std::hash::BuildHasherDefault<PassThroughHasher>>;
 
 /// A hash map over borrowed names with caller-supplied xxh3 hashes -
 /// the symbol table's key discipline, reusable wherever names are
@@ -357,10 +378,7 @@ pub struct PrehashedMap<V>(
 impl<V> PrehashedMap<V> {
     pub fn get(&self, name: &str, hash: u64) -> Option<&V> {
         // SAFETY: the key is only compared during this call.
-        let probe = Key {
-            hash,
-            key: unsafe { std::mem::transmute::<&str, &'static str>(name) },
-        };
+        let probe = Key { hash, key: unsafe { std::mem::transmute::<&str, &'static str>(name) } };
         self.0.get(&probe)
     }
 
@@ -382,12 +400,10 @@ impl SymbolTable {
     /// Returns the symbol for a global name, creating it if needed.
     pub fn intern(&mut self, name: &'static str) -> SymbolId {
         let hash = hash_key(name);
-        *self.shards[shard_of(hash)]
-            .entry(Key { hash, key: name })
-            .or_insert_with(|| {
-                self.syms.push(Symbol::new(name));
-                (self.syms.len() - 1) as u32
-            })
+        *self.shards[shard_of(hash)].entry(Key { hash, key: name }).or_insert_with(|| {
+            self.syms.push(Symbol::new(name));
+            (self.syms.len() - 1) as u32
+        })
     }
 
     /// Returns the symbol for a global name if it exists.
@@ -488,15 +504,13 @@ impl SymbolTable {
 
         // Insert the new names with their final ids, reusing the hash
         // computed during staging (no re-hash here).
-        self.shards
-            .par_iter_mut()
-            .zip(&results)
-            .zip(&bases)
-            .for_each(|((shard, (_, news)), &b)| {
+        self.shards.par_iter_mut().zip(&results).zip(&bases).for_each(
+            |((shard, (_, news)), &b)| {
                 for (k, &(name, hash)) in news.iter().enumerate() {
                     shard.insert(Key { hash, key: name }, (b + k) as u32);
                 }
-            });
+            },
+        );
 
         // Scatter each batch entry's resolved id in parallel; every
         // batch index appears in exactly one shard's output list, so

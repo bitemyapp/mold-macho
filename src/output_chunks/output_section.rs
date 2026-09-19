@@ -104,11 +104,9 @@ pub fn copy_buf<E: Arch>(ctx: &Context<E>, id: OutputSectionId, buf: &mut [u8]) 
             tail[..data.len()].copy_from_slice(data);
         }
         Tail::DataBlobs => {
-            for b in ctx
-                .data_blobs
-                .iter()
-                .filter(|b| ctx.isecs[b.isec as usize].output_section() == Some(ChunkId::Output(id)))
-            {
+            for b in ctx.data_blobs.iter().filter(|b| {
+                ctx.isecs[b.isec as usize].output_section() == Some(ChunkId::Output(id))
+            }) {
                 let mut at = ctx.isecs[b.isec as usize].offset as usize - osec.tail_off as usize;
                 for f in &b.fields {
                     match f {

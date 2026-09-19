@@ -19,11 +19,7 @@ struct TestJob {
 /// Returns the architectures to test: the host's, plus x86_64 under
 /// Rosetta when available.
 fn test_archs() -> Vec<&'static str> {
-    let host = if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
-        "x86_64"
-    };
+    let host = if cfg!(target_arch = "aarch64") { "arm64" } else { "x86_64" };
     let mut archs = vec![host];
     if host == "arm64"
         && Command::new("arch")
@@ -90,11 +86,7 @@ pub fn run(cases: &Path, linker: &Path) -> ExitCode {
         let name = path.file_stem().unwrap().to_string_lossy().into_owned();
         if patterns.is_empty() || patterns.iter().any(|p| name.contains(p.as_str())) {
             for &arch in &archs {
-                jobs.push(TestJob {
-                    script: path.clone(),
-                    name: format!("{name} ({arch})"),
-                    arch,
-                });
+                jobs.push(TestJob { script: path.clone(), name: format!("{name} ({arch})"), arch });
             }
         }
     }
@@ -157,7 +149,9 @@ mod tests {
     fn run_script(body: &str) -> Output {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let dir = env::temp_dir().join(format!(
-            "mold-harness-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)
+            "mold-harness-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&dir).unwrap();
         let common = Path::new(env!("CARGO_MANIFEST_DIR")).join("cases/common.inc");
@@ -166,7 +160,8 @@ mod tests {
             .arg(common)
             .env("mold", "unused")
             .current_dir(&dir)
-            .output().unwrap();
+            .output()
+            .unwrap();
         std::fs::remove_dir_all(dir).unwrap();
         output
     }

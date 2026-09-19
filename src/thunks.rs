@@ -28,9 +28,9 @@
 
 use crate::arch::{Arch, RelocClass};
 use crate::context::Context;
+use crate::input_files::FileId;
 use crate::input_sections::InputSectionId;
 use crate::output_chunks::{self, OutputSectionId};
-use crate::input_files::FileId;
 use crate::symbol::SymbolId;
 use crate::util::align_to;
 
@@ -56,10 +56,7 @@ pub fn create_range_extension_thunks<E: Arch>(
     // merely-large section (bigger than the trigger, far smaller than
     // the branch range) from drowning in reserved-but-unused thunk
     // entries.
-    let total_estimate: u64 = isecs
-        .iter()
-        .map(|&id| ctx.isecs[id].size as u64 + 16)
-        .sum::<u64>();
+    let total_estimate: u64 = isecs.iter().map(|&id| ctx.isecs[id].size as u64 + 16).sum::<u64>();
     let total_estimate = total_estimate + (total_estimate / BATCH + 1) * MAX_THUNK;
 
     let mut thunks: Vec<output_chunks::Thunk> = Vec::new();
@@ -194,8 +191,7 @@ fn scan_batch<E: Arch>(
                         // conservative: fall through to the entry below
                     } else if t.offset != u32::MAX {
                         let target_off = t.offset as u64 + sym.value;
-                        if thunk_off.saturating_sub(target_off)
-                            < E::BRANCH_RANGE / 2 - 1024 * 1024
+                        if thunk_off.saturating_sub(target_off) < E::BRANCH_RANGE / 2 - 1024 * 1024
                         {
                             continue;
                         }
@@ -219,10 +215,7 @@ fn scan_batch<E: Arch>(
     // each symbol.
     syms.par_sort_unstable();
     let n = syms.len() as u64;
-    thunks.push(output_chunks::Thunk {
-        offset: thunk_off,
-        syms,
-    });
+    thunks.push(output_chunks::Thunk { offset: thunk_off, syms });
     n
 }
 
@@ -254,12 +247,8 @@ pub fn gather_thunk_addresses<E: Arch>(ctx: &mut Context<E>, osecs: &[OutputSect
 #[inline]
 pub fn reachable_thunk_addr<E: Arch>(ctx: &Context<E>, sym: SymbolId, pc: u64) -> Option<u64> {
     let range = (E::BRANCH_RANGE / 2) as i64;
-    ctx.sym_aux(sym)
-        .thunk_addrs
-        .iter()
-        .copied()
-        .find(|&t| {
-            let d = t.wrapping_sub(pc) as i64;
-            (-range..range).contains(&d)
-        })
+    ctx.sym_aux(sym).thunk_addrs.iter().copied().find(|&t| {
+        let d = t.wrapping_sub(pc) as i64;
+        (-range..range).contains(&d)
+    })
 }

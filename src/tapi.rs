@@ -13,8 +13,7 @@
 use crate::fatal;
 use crate::mapped_file::MappedFile;
 
-#[derive(Debug, Default)]
-#[derive(Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct TbdFile {
     pub install_name: String,
     pub current_version: u32,
@@ -239,7 +238,11 @@ fn parse_json(file: &str, text: &'static str, arch: &str) -> TbdFile {
     };
 
     let target_of = |lib: &Json| {
-        let available = lib.get("target_info").map(Json::arr).unwrap_or(&[]).iter()
+        let available = lib
+            .get("target_info")
+            .map(Json::arr)
+            .unwrap_or(&[])
+            .iter()
             .filter_map(|t| t.get("target").and_then(Json::str))
             .filter_map(|t| t.strip_suffix("-macos"));
         format!("{}-macos", select_arch(arch, available))
@@ -260,7 +263,9 @@ fn parse_json(file: &str, text: &'static str, arch: &str) -> TbdFile {
             return;
         }
         for key in ["exported_symbols", "reexported_symbols"] {
-            for group in lib.get(key).map(Json::arr).unwrap_or(&[]).iter().filter(|g| applies(g, &target)) {
+            for group in
+                lib.get(key).map(Json::arr).unwrap_or(&[]).iter().filter(|g| applies(g, &target))
+            {
                 for section in ["data", "text"] {
                     let Some(kinds) = group.get(section) else { continue };
                     tbd.exports.extend(kinds.strs("global"));
@@ -288,18 +293,28 @@ fn parse_json(file: &str, text: &'static str, arch: &str) -> TbdFile {
     if !library_applies(main, &target) {
         fatal!("{file}: .tbd file does not support {target}");
     }
-    if let Some(name) = main.get("install_names").map(Json::arr).and_then(|a| a.iter().find(|g| applies(g, &target))) {
+    if let Some(name) = main
+        .get("install_names")
+        .map(Json::arr)
+        .and_then(|a| a.iter().find(|g| applies(g, &target)))
+    {
         if let Some(s) = name.get("name").and_then(Json::str) {
             tbd.install_name = s.to_string();
         }
     }
-    if let Some(v) = main.get("current_versions").map(Json::arr).and_then(|a| a.iter().find(|g| applies(g, &target))) {
+    if let Some(v) = main
+        .get("current_versions")
+        .map(Json::arr)
+        .and_then(|a| a.iter().find(|g| applies(g, &target)))
+    {
         if let Some(s) = v.get("version").and_then(Json::str) {
             tbd.current_version = parse_version(s);
         }
     }
     for flags in main.get("flags").map(Json::arr).unwrap_or(&[]) {
-        if applies(flags, &target) && flags.strs("attributes").any(|a| a == "not_app_extension_safe") {
+        if applies(flags, &target)
+            && flags.strs("attributes").any(|a| a == "not_app_extension_safe")
+        {
             tbd.not_app_extension_safe = true;
         }
     }
@@ -316,7 +331,13 @@ fn parse_json(file: &str, text: &'static str, arch: &str) -> TbdFile {
         }
         add_symbols(&mut tbd, lib);
     }
-    for group in main.get("reexported_libraries").map(Json::arr).unwrap_or(&[]).iter().filter(|g| applies(g, &target)) {
+    for group in main
+        .get("reexported_libraries")
+        .map(Json::arr)
+        .unwrap_or(&[])
+        .iter()
+        .filter(|g| applies(g, &target))
+    {
         for name in group.strs("names") {
             if !doc_names.contains(&name) && !tbd.external_reexports.contains(&name) {
                 tbd.external_reexports.push(name);
@@ -345,11 +366,7 @@ fn memchr_from(bytes: &[u8], needle: u8, from: usize) -> Option<usize> {
     }
     // SAFETY: memchr reads within the given range.
     let p = unsafe {
-        libc::memchr(
-            bytes.as_ptr().add(from) as *const _,
-            needle as i32,
-            bytes.len() - from,
-        )
+        libc::memchr(bytes.as_ptr().add(from) as *const _, needle as i32, bytes.len() - from)
     };
     if p.is_null() {
         None
@@ -376,20 +393,11 @@ pub fn parse_cached(mf: &'static MappedFile, arch: &'static str) -> TbdFile {
     static CACHE: std::sync::Mutex<Option<hashbrown::HashMap<(usize, &'static str), TbdFile>>> =
         std::sync::Mutex::new(None);
     let key = (mf.data.as_ptr() as usize, arch);
-    if let Some(tbd) = CACHE
-        .lock()
-        .unwrap()
-        .get_or_insert_with(hashbrown::HashMap::new)
-        .get(&key)
-    {
+    if let Some(tbd) = CACHE.lock().unwrap().get_or_insert_with(hashbrown::HashMap::new).get(&key) {
         return tbd.clone();
     }
     let tbd = parse(mf, arch);
-    CACHE
-        .lock()
-        .unwrap()
-        .get_or_insert_with(hashbrown::HashMap::new)
-        .insert(key, tbd.clone());
+    CACHE.lock().unwrap().get_or_insert_with(hashbrown::HashMap::new).insert(key, tbd.clone());
     tbd
 }
 
@@ -425,12 +433,13 @@ pub fn parse(mf: &MappedFile, arch: &str) -> TbdFile {
     let mut reexports: Vec<&'static str> = Vec::new();
 
     for (doc, fields) in yaml_documents(text).iter().enumerate() {
-        let available = fields.iter().filter(|f| f.indent == 0 && !f.item)
-            .flat_map(|f| f.items().filter_map(move |s| match f.key {
+        let available = fields.iter().filter(|f| f.indent == 0 && !f.item).flat_map(|f| {
+            f.items().filter_map(move |s| match f.key {
                 "targets" => s.strip_suffix("-macos"),
                 "archs" => Some(s),
                 _ => None,
-            }));
+            })
+        });
         let arch = select_arch(arch, available);
         let doc_active = yaml_matches(fields.iter().filter(|f| f.indent == 0 && !f.item), arch);
         if doc == 0 && !doc_active {
@@ -442,7 +451,8 @@ pub fn parse(mf: &MappedFile, arch: &str) -> TbdFile {
                 active = doc_active;
             }
             if field.item {
-                let end = fields[i + 1..].iter()
+                let end = fields[i + 1..]
+                    .iter()
                     .position(|f| f.indent <= field.indent)
                     .map_or(fields.len(), |n| i + 1 + n);
                 active = doc_active && yaml_matches(fields[i..end].iter(), arch);
@@ -457,9 +467,12 @@ pub fn parse(mf: &MappedFile, arch: &str) -> TbdFile {
                 continue;
             }
             match field.key {
-                "current-version" if doc == 0 => tbd.current_version = parse_version(unquote(field.value)),
+                "current-version" if doc == 0 => {
+                    tbd.current_version = parse_version(unquote(field.value))
+                }
                 "flags" if doc == 0 => {
-                    tbd.not_app_extension_safe = field.items().any(|s| s == "not_app_extension_safe");
+                    tbd.not_app_extension_safe =
+                        field.items().any(|s| s == "not_app_extension_safe");
                 }
                 "symbols" => tbd.exports.extend(field.items()),
                 "weak-symbols" | "weak-def-symbols" => tbd.weak_exports.extend(field.items()),
@@ -488,10 +501,8 @@ pub fn parse(mf: &MappedFile, arch: &str) -> TbdFile {
 
     // Reexported libraries not inlined as documents live in files of
     // their own and must be loaded separately.
-    tbd.external_reexports = reexports
-        .into_iter()
-        .filter(|name| !doc_names.contains(name))
-        .collect();
+    tbd.external_reexports =
+        reexports.into_iter().filter(|name| !doc_names.contains(name)).collect();
 
     if tbd.install_name.is_empty() {
         fatal!("{}: no install-name in .tbd file", mf.name);
@@ -510,8 +521,12 @@ struct YamlField {
 
 impl YamlField {
     fn items(&self) -> impl Iterator<Item = &'static str> {
-        self.value.trim_start_matches('[').trim_end_matches(']')
-            .split(',').map(unquote).filter(|s| !s.is_empty())
+        self.value
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .split(',')
+            .map(unquote)
+            .filter(|s| !s.is_empty())
     }
 }
 
@@ -568,13 +583,16 @@ mod tests {
 
     fn mapped(text: &'static str) -> &'static MappedFile {
         Box::leak(Box::new(MappedFile {
-            name: "test.tbd".to_string(), data: text.as_bytes(), parent: None,
+            name: "test.tbd".to_string(),
+            data: text.as_bytes(),
+            parent: None,
         }))
     }
 
     #[test]
     fn yaml_target_groups_and_cache() {
-        let mf = mapped(r#"--- !tapi-tbd
+        let mf = mapped(
+            r#"--- !tapi-tbd
 targets: [ arm64-macos, x86_64-macos ]
 install-name: /libtest
 exports:
@@ -592,7 +610,8 @@ reexported-libraries:
     libraries: [ /arm ]
   - targets: [ arm64-ios ]
     libraries: [ /ios ]
-"#);
+"#,
+        );
         let arm = parse_cached(mf, "arm64");
         assert_eq!(arm.exports, ["_arm", "_OBJC_CLASS_$_Arm", "_OBJC_METACLASS_$_Arm"]);
         assert_eq!(arm.weak_exports, ["_weak_arm"]);
@@ -607,7 +626,8 @@ reexported-libraries:
 
     #[test]
     fn arm64e_fallback_prefers_exact_architecture() {
-        let mf = mapped(r#"--- !tapi-tbd
+        let mf = mapped(
+            r#"--- !tapi-tbd
 targets: [ arm64-macos, arm64e-macos ]
 install-name: /libtest
 exports:
@@ -621,13 +641,15 @@ install-name: /inline
 exports:
   - targets: [ arm64e-macos ]
     symbols: [ _fallback ]
-"#);
+"#,
+        );
         assert_eq!(parse(mf, "arm64").exports, ["_arm", "_fallback"]);
     }
 
     #[test]
     fn legacy_architecture_groups() {
-        let mf = mapped(r#"--- !tapi-tbd-v3
+        let mf = mapped(
+            r#"--- !tapi-tbd-v3
 archs: [ arm64, x86_64 ]
 platform: macosx
 install-name: /libtest
@@ -636,14 +658,16 @@ exports:
     symbols: [ _arm ]
   - archs: [ x86_64 ]
     symbols: [ _x86 ]
-"#);
+"#,
+        );
         assert_eq!(parse(mf, "arm64").exports, ["_arm"]);
         assert_eq!(parse(mf, "x86_64").exports, ["_x86"]);
     }
 
     #[test]
     fn json_target_groups_and_inline_libraries() {
-        let mf = mapped(r#"{"main_library":{
+        let mf = mapped(
+            r#"{"main_library":{
           "target_info":[{"target":"arm64-macos"},{"target":"x86_64-macos"}],
           "install_names":[{"name":"/libtest"}],
           "exported_symbols":[
@@ -655,7 +679,8 @@ exports:
             {"targets":["x86_64-macos"],"names":["/x86"]}]},
           "libraries":[{"target_info":[{"target":"arm64-macos"}],
             "install_names":[{"name":"/inline"}],
-            "exported_symbols":[{"text":{"global":["_inline"]}}]}]}"#);
+            "exported_symbols":[{"text":{"global":["_inline"]}}]}]}"#,
+        );
         let arm = parse(mf, "arm64");
         assert_eq!(arm.exports, ["_both", "_inline"]);
         assert_eq!(arm.weak_exports, ["_weak"]);
@@ -678,5 +703,9 @@ fn select_arch<'a>(arch: &'a str, available: impl Iterator<Item = &'a str>) -> &
         exact |= name == arch;
         arm64e |= name == "arm64e";
     }
-    if arch == "arm64" && !exact && arm64e { "arm64e" } else { arch }
+    if arch == "arm64" && !exact && arm64e {
+        "arm64e"
+    } else {
+        arch
+    }
 }
