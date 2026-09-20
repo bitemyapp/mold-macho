@@ -1,5 +1,6 @@
 //! The linker passes, in the order the driver runs them.
 
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use crate::chunks::sectcreate::SectCreateSection;
@@ -5461,7 +5462,7 @@ pub fn copy_chunks<E: Target>(
 ) {
     use rayon::prelude::*;
 
-    let mut jobs: Vec<(ChunkId, usize, usize)> = ctx
+    let jobs: Vec<(ChunkId, Range<u64>)> = ctx
         .chunks
         .iter()
         .map(|&id| (id, ctx.chunk_header(id)))
@@ -5472,27 +5473,17 @@ pub fn copy_chunks<E: Target>(
             ) && !hdr.is_zerofill()
                 // An empty section (every subsection of a coverage
                 // section dead, say) shares its file offset with its
-                // neighbor; it has nothing to copy and would only
-                // upset the gap arithmetic below.
+                // neighbor; it has nothing to copy, and its range would
+                // start inside the neighbor's.
                 && hdr.size != 0
         })
-        .map(|(id, hdr)| (id, hdr.fileoff as usize, hdr.size as usize))
+        .map(|(id, hdr)| (id, hdr.fileoff..hdr.fileoff + hdr.size))
         .collect();
-    jobs.sort_by_key(|&(_, off, _)| off);
-
-    let mut slices: Vec<(ChunkId, &mut [u8])> = Vec::with_capacity(jobs.len());
-    let mut tail = &mut *buf;
-    let mut consumed = 0;
-    for &(id, off, size) in &jobs {
-        let (_gap, rest) = tail.split_at_mut(off - consumed);
-        let (slice, rest) = rest.split_at_mut(size);
-        slices.push((id, slice));
-        tail = rest;
-        consumed = off + size;
-    }
+    let ranges: Vec<Range<u64>> = jobs.iter().map(|(_, range)| range.clone()).collect();
+    let slices = crate::output_file::split_ranges(buf, &ranges);
 
     let t = ctx.timer("copy_chunks");
-    slices.into_par_iter().for_each(|(id, slice)| chunks::copy_buf(ctx, id, slice));
+    jobs.par_iter().zip(slices).for_each(|(&(id, _), slice)| chunks::copy_buf(ctx, id, slice));
     drop(t);
 
     if ctx.use_chained_fixups() {

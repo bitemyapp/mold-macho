@@ -23,6 +23,7 @@
 //! block.
 
 use std::ffi::CString;
+use std::ops::Range;
 use std::os::unix::fs::{FileExt, PermissionsExt};
 use std::path::Path;
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -186,4 +187,24 @@ pub fn write(path: &str, buf: &[u8]) {
     let out = OutputFile::create(path, buf.as_ptr(), buf.len());
     out.queue(0, buf.len());
     out.finish();
+}
+
+/// Borrows several disjoint ranges of a buffer mutably at once.
+pub fn split_ranges<'a>(buf: &'a mut [u8], ranges: &[Range<u64>]) -> Vec<&'a mut [u8]> {
+    let mut order: Vec<usize> = (0..ranges.len()).collect();
+    order.sort_by_key(|&i| ranges[i].start);
+
+    let mut result: Vec<Option<&'a mut [u8]>> = (0..ranges.len()).map(|_| None).collect();
+    let mut rest = buf;
+    let mut pos = 0u64;
+    for i in order {
+        let r = &ranges[i];
+        assert!(r.start >= pos, "overlapping output ranges");
+        rest.split_off_mut(..(r.start - pos) as usize).unwrap();
+        let slice = rest.split_off_mut(..(r.end - r.start) as usize).unwrap();
+        result[i] = Some(slice);
+
+        pos = r.end;
+    }
+    result.into_iter().map(|s| s.unwrap()).collect()
 }
