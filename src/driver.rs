@@ -1,76 +1,69 @@
 //! The linker driver: runs the passes in order.
 
-use crate::cmdline;
+use std::borrow::Cow;
+use std::ffi::{OsStr, OsString};
+use std::path::Path;
+use std::sync::Arc;
+
+use crate::cmdline::{self, InputArg};
 use crate::context::Context;
 use crate::dead_strip;
+use crate::mapped_file::MappedFile;
 use crate::output_file;
 use crate::passes;
 use crate::target::Target;
 
 /// Runs the linker with the given command line. Returns the exit status.
 ///
-/// `link_for_target` links for a named target, or reports the target the
-/// inputs are actually for; the executable provides it, as the targets
-/// are instantiated in crates of their own.
+/// `initial_target` is an enabled target used for the initial argument
+/// parsing. `link_for_target` links for a named target, or reports the
+/// target the inputs are actually for; the executable provides both, as
+/// the targets are instantiated in crates of their own.
 pub fn main(
-    argv: Vec<String>,
-    link_for_target: impl Fn(&str, &[String]) -> Result<i32, String>,
+    argv: Vec<OsString>,
+    initial_target: &str,
+    link_for_target: impl Fn(&str, Arc<[Cow<'static, OsStr>]>) -> Result<i32, &'static str>,
 ) -> i32 {
-    // Guess the target from -arch, then from the first Mach-O input
-    // file, falling back to the host. If the guess turns out wrong,
-    // start over with the right one.
-    let mut target = argv
-        .windows(2)
-        .find(|w| w[0] == "-arch")
-        .map(|w| w[1].clone())
-        .or_else(|| sniff_target(&argv))
-        .unwrap_or_else(|| host_target().to_string());
+    let cmdline: Arc<[_]> = cmdline::expand_response_files(argv).into();
 
+    // Parse with an enabled target's defaults; if the target turns out to
+    // be different, start over with the right one.
+    let mut target = initial_target;
     loop {
-        match link_for_target(&target, &argv) {
+        match link_for_target(target, Arc::clone(&cmdline)) {
             Ok(status) => return status,
             Err(actual) => target = actual,
         }
     }
 }
 
-/// Reads the CPU type of the first Mach-O file named on the command
-/// line, if any.
-fn sniff_target(argv: &[String]) -> Option<String> {
-    use crate::macho::*;
-    for arg in &argv[1..] {
-        if arg.starts_with('-') {
-            continue;
-        }
-        let Ok(data) = std::fs::read(arg) else { continue };
-        if data.len() < 8 {
-            continue;
-        }
-        let magic = u32::from_le_bytes(data[..4].try_into().unwrap());
-        if magic == MH_MAGIC_64 {
-            let cputype = u32::from_le_bytes(data[4..8].try_into().unwrap());
-            if let Some(name) = crate::target::cputype_name(cputype) {
-                return Some(name.to_string());
-            }
+/// The target of the first Mach-O input file named on the command line,
+/// for a link without -arch; the host's if there is none.
+fn detect_target(args: &cmdline::Args) -> &'static str {
+    for input in &args.inputs {
+        if let InputArg::File(path) = input
+            && let Some(mf) = MappedFile::open(Path::new(path))
+            && let Some(name) = crate::filetype::get_macho_target(mf.data)
+        {
+            return name;
         }
     }
-    None
-}
-
-fn host_target() -> &'static str {
     if cfg!(target_arch = "aarch64") { "arm64" } else { "x86_64" }
 }
 
 /// Links for the target `E`, or reports the target the inputs are
 /// actually for.
-pub fn link<E: Target>(cmdline: &[String]) -> Result<i32, String> {
-    let cmdline = cmdline::expand_response_files(cmdline);
-    let args = cmdline::parse_args(&cmdline);
+pub fn link<E: Target>(cmdline: Arc<[Cow<'static, OsStr>]>) -> Result<i32, &'static str> {
+    let mut args = cmdline::parse_args(&cmdline);
 
-    if let Some(arch) = &args.arch
-        && arch != E::NAME
-    {
-        return Err(arch.clone());
+    // If no -arch option is given, deduce it from input files.
+    if args.arch.is_none() {
+        args.arch = Some(detect_target(&args));
+    }
+
+    // Redo if -arch does not match with our speculation.
+    if args.arch != Some(E::NAME) {
+        return Err(args.arch.unwrap());
     }
 
     // Fork so exit latency (unmapping every input) hides behind the
@@ -248,6 +241,8 @@ pub fn link<E: Target>(cmdline: &[String]) -> Result<i32, String> {
             eprintln!("    write-wait {:?}", tt.elapsed());
         }
     }
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    let _ = std::io::Write::flush(&mut std::io::stderr());
     crate::subprocess::notify_parent();
     lap(&mut phases, "copy+write");
 

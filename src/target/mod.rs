@@ -134,6 +134,12 @@ pub trait Target: Copy + Default + Send + Sync + 'static {
 }
 
 /// Returns the target name for a Mach-O CPU type, if we know it.
+/// The canonical name of a target named on the command line, borrowed
+/// from static storage so that a restart for that target can carry it.
+pub fn canonical_name(name: &str) -> Option<&'static str> {
+    [Arm64::NAME, X86_64::NAME].into_iter().find(|&canonical| canonical == name)
+}
+
 pub fn cputype_name(cputype: u32) -> Option<&'static str> {
     use crate::macho::*;
     match cputype {

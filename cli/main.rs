@@ -3,28 +3,45 @@
 //! its own so that the compiler can build them in parallel, and a feature
 //! per target decides which of them are built in.
 
-// mold uses mimalloc on every platform (the C++ tree enables it by
-// default, mold-rust sets it as the global allocator): a linker
-// allocates and frees from many threads at once, and the system
-// allocator's cross-thread synchronization shows up directly in
-// profiles.
+use std::borrow::Cow;
+use std::ffi::OsStr;
+use std::sync::Arc;
+
+// A Rust executable can define only one global allocator, so select mimalloc
+// here rather than in the linker library.
+#[cfg(not(feature = "system-allocator"))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-fn link_for_target(target: &str, cmdline: &[String]) -> Result<i32, String> {
-    match target {
-        #[cfg(feature = "arm64")]
-        "arm64" => mold_macho_target_arm64::link(cmdline),
-        #[cfg(feature = "x86_64")]
-        "x86_64" => mold_macho_target_x86_64::link(cmdline),
-        _ => {
-            mold_macho::error::fatal(format_args!("unsupported target: {target}"));
+type LinkFn = fn(Arc<[Cow<'static, OsStr>]>) -> Result<i32, &'static str>;
+
+// Each target has its own monomorphized link function. Start with the first
+// enabled target and switch to the matching function if the inputs differ.
+const TARGETS: &[(&str, LinkFn)] = &[
+    #[cfg(feature = "arm64")]
+    ("arm64", mold_macho_target_arm64::link),
+    #[cfg(feature = "x86_64")]
+    ("x86_64", mold_macho_target_x86_64::link),
+];
+
+fn link_for_target(target: &str, cmdline: Arc<[Cow<'static, OsStr>]>) -> Result<i32, &'static str> {
+    for &(name, link) in TARGETS {
+        if name == target {
+            return link(cmdline);
         }
     }
+    eprintln!(
+        "mold: unsupported target: {target}; rebuild mold with the appropriate target support"
+    );
+    std::process::exit(1);
 }
 
 fn main() {
-    let argv: Vec<String> = std::env::args().collect();
-    let status = mold_macho::driver::main(argv, link_for_target);
-    mold_macho::error::exit_after_cleanup(status);
+    let Some(&(initial_target, _)) = TARGETS.first() else {
+        eprintln!("mold: no targets enabled; rebuild mold with the appropriate target support");
+        std::process::exit(1);
+    };
+    let args = std::env::args_os().collect();
+    let status = mold_macho::driver::main(args, initial_target, link_for_target);
+    std::process::exit(status);
 }

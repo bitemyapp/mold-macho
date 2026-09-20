@@ -19,6 +19,19 @@ pub enum FileType {
     LlvmBitcode,
 }
 
+/// Returns the target name of a Mach-O file, or `None` if it is not a
+/// 64-bit Mach-O file for a CPU type we recognize.
+pub fn get_macho_target(data: &[u8]) -> Option<&'static str> {
+    if data.len() < size_of::<MachHeader>() {
+        return None;
+    }
+    let hdr = MachHeader::read_from(data);
+    if hdr.magic != MH_MAGIC_64 {
+        return None;
+    }
+    crate::target::cputype_name(hdr.cputype)
+}
+
 pub fn get_file_type(mf: &MappedFile) -> FileType {
     let data = mf.data;
     if data.is_empty() {

@@ -3,6 +3,11 @@
 //! The command line is compatible with Apple's ld64: options are single-dash
 //! long names, and input files and `-l` options are position-dependent.
 
+use std::borrow::Cow;
+use std::ffi::{OsStr, OsString};
+use std::io::IsTerminal;
+use std::os::unix::ffi::OsStrExt;
+
 use crate::fatal;
 use crate::macho::*;
 
@@ -58,7 +63,8 @@ pub struct Args {
     /// -bundle_loader: the executable a bundle's undefined symbols may
     /// resolve to, bound at run time as the main executable.
     pub bundle_loader: Option<String>,
-    pub arch: Option<String>,
+    /// -arch, canonicalized to the target's own spelling of its name.
+    pub arch: Option<&'static str>,
     pub entry: String,
     pub platform: u32,
     pub platform_minos: u32,
@@ -386,16 +392,14 @@ fn parse_hex(opt: &str, val: &str) -> u64 {
 
 /// Expands @file response-file arguments, splitting the file's contents
 /// on whitespace with simple quote handling.
-pub fn expand_response_files(argv: &[String]) -> Vec<String> {
+pub fn expand_response_files(argv: Vec<OsString>) -> Vec<Cow<'static, OsStr>> {
     let mut out = Vec::with_capacity(argv.len());
     for arg in argv {
-        if let Some(path) = arg.strip_prefix('@') {
-            // Option arguments like "@rpath/libfoo.dylib" also start
-            // with '@': expand only when the file actually exists.
-            let Ok(text) = std::fs::read_to_string(path) else {
-                out.push(arg.clone());
-                continue;
-            };
+        // Option arguments like "@rpath/libfoo.dylib" also start with
+        // '@': expand only when the file actually exists.
+        if let Some(path) = arg.as_bytes().strip_prefix(b"@")
+            && let Ok(text) = std::fs::read_to_string(OsStr::from_bytes(path))
+        {
             let mut cur = String::new();
             let mut quote: Option<char> = None;
             for c in text.chars() {
@@ -404,40 +408,58 @@ pub fn expand_response_files(argv: &[String]) -> Vec<String> {
                     None if c == '"' || c == '\'' => quote = Some(c),
                     None if c.is_whitespace() => {
                         if !cur.is_empty() {
-                            out.push(std::mem::take(&mut cur));
+                            out.push(Cow::Owned(OsString::from(std::mem::take(&mut cur))));
                         }
                     }
                     _ => cur.push(c),
                 }
             }
             if !cur.is_empty() {
-                out.push(cur);
+                out.push(Cow::Owned(OsString::from(cur)));
             }
-        } else {
-            out.push(arg.clone());
+            continue;
         }
+        out.push(Cow::Owned(arg));
     }
     out
 }
 
-pub fn parse_args(cmdline: &[String]) -> Args {
+/// Parses all options. `cmdline` includes the program name.
+pub fn parse_args(cmdline: &[Cow<'_, OsStr>]) -> Args {
+    // Options and their arguments are matched as text; a path that is
+    // not UTF-8 is rejected here rather than mangled later.
+    let cmdline: Vec<&str> = cmdline
+        .iter()
+        .map(|arg| {
+            arg.to_str()
+                .unwrap_or_else(|| fatal!("expected a UTF-8 argument: {}", arg.to_string_lossy()))
+        })
+        .collect();
     let mut args = Args::default();
     let mut i = 1;
     let mut version_shown = false;
 
+    crate::error::set_color(std::io::stderr().is_terminal());
+
     let next_arg = |i: &mut usize| -> &str {
         *i += 1;
         match cmdline.get(*i) {
-            Some(val) => val,
+            Some(&val) => val,
             None => fatal!("option {}: argument missing", cmdline[*i - 1]),
         }
     };
 
     while i < cmdline.len() {
-        let opt = cmdline[i].as_str();
+        let opt = cmdline[i];
         match opt {
             "-o" => args.output = next_arg(&mut i).to_string(),
-            "-arch" => args.arch = Some(next_arg(&mut i).to_string()),
+            "-arch" => {
+                let arch = next_arg(&mut i);
+                args.arch = Some(
+                    crate::target::canonical_name(arch)
+                        .unwrap_or_else(|| fatal!("unsupported target: {arch}")),
+                );
+            }
             "-e" => args.entry = next_arg(&mut i).to_string(),
             "-platform_version" => {
                 args.platform = parse_platform(next_arg(&mut i));

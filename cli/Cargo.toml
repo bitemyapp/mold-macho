@@ -27,5 +27,6 @@ mold-macho-tests = { path = "../tests" }
 # target alone (`--no-default-features --features arm64`) is much faster.
 [features]
 default = ["arm64", "x86_64"]
+system-allocator = []
 arm64 = ["dep:mold-macho-target-arm64"]
 x86_64 = ["dep:mold-macho-target-x86_64"]
