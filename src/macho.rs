@@ -8,9 +8,7 @@
 //! The exception is code signatures: their data structures are big-endian,
 //! and are serialized by hand in the code-signature chunk.
 
-mod consts;
-
-pub use consts::*;
+pub use crate::macho_consts::*;
 
 /// A record that can be copied between memory and a file buffer.
 ///

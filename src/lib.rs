@@ -14,6 +14,7 @@ pub mod input_files;
 pub mod input_sections;
 pub mod lto;
 pub mod macho;
+mod macho_consts;
 pub mod mapfile;
 pub mod mapped_file;
 pub mod output_file;
