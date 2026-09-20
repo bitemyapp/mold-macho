@@ -9,16 +9,31 @@
 //! the LC_SEGMENT_64 load commands. mold's chunks module has the
 //! same shape.
 
+pub mod bind_info;
 pub mod chained_fixups;
-pub mod dyld_info;
+pub mod code_signature;
+pub mod data_in_code;
 pub mod eh_frame;
 pub mod export_trie;
+pub mod function_starts;
 pub mod got;
-pub mod misc;
-pub mod objc;
+pub mod indirect_symtab;
+pub mod init_offsets;
+pub mod lazy_bind_info;
+pub mod lazy_ptrs;
+pub mod objc_imageinfo;
+pub mod objc_methlist;
+pub mod objc_stubs;
 pub mod output_section;
+pub mod rebase_info;
+pub mod sectcreate;
+pub mod strtab;
+pub mod stub_helper;
+pub mod stubs;
 pub mod symtab;
+pub mod thread_ptrs;
 pub mod unwind_info;
+pub mod weak_bind_info;
 
 use std::num::NonZeroU32;
 
@@ -235,6 +250,20 @@ pub fn segment_prot(name: &str) -> u32 {
     }
 }
 
+/// Returns the load-command index of the segment containing `addr`, and
+/// the offset within it.
+pub fn segment_and_offset<E: Target>(ctx: &Context<E>, addr: u64) -> (usize, u64) {
+    for (i, seg) in ctx.segments.iter().enumerate() {
+        if seg.cmd.vmaddr <= addr
+            && addr < seg.cmd.vmaddr + seg.cmd.vmsize
+            && seg.name != "__PAGEZERO"
+        {
+            return (i, addr - seg.cmd.vmaddr);
+        }
+    }
+    unreachable!("no segment contains address {addr:#x}");
+}
+
 /// Writes a chunk's bytes into its own slice of the output. The mach
 /// header, the symbol and string tables and the code signature are
 /// written serially after the parallel copy (see copy_chunks), so they
@@ -243,27 +272,27 @@ pub fn copy_buf<E: Target>(ctx: &Context<E>, id: ChunkId, buf: &mut [u8]) {
     match id {
         ChunkId::MachHeader | ChunkId::Symtab | ChunkId::Strtab | ChunkId::CodeSignature => {}
         ChunkId::Output(id) => output_section::copy_buf(ctx, id, buf),
-        ChunkId::Stubs => got::stubs::copy_buf(ctx, buf),
-        ChunkId::StubHelper => got::stub_helper::copy_buf(ctx, buf),
-        ChunkId::LazyPtrs => got::lazy_ptrs::copy_buf(ctx, buf),
-        ChunkId::Got => got::got::copy_buf(ctx, buf),
-        ChunkId::ThreadPtrs => got::thread_ptrs::copy_buf(ctx, buf),
-        ChunkId::ObjcStubs => objc::objc_stubs::copy_buf(ctx, buf),
-        ChunkId::ObjcMethlist => objc::objc_methlist::copy_buf(ctx, buf),
-        ChunkId::ObjcImageInfo => objc::objc_imageinfo::copy_buf(ctx, buf),
-        ChunkId::SectCreate(i) => misc::sectcreate::copy_buf(ctx, i, buf),
-        ChunkId::InitOffsets => misc::init_offsets::copy_buf(ctx, buf),
+        ChunkId::Stubs => stubs::copy_buf(ctx, buf),
+        ChunkId::StubHelper => stub_helper::copy_buf(ctx, buf),
+        ChunkId::LazyPtrs => lazy_ptrs::copy_buf(ctx, buf),
+        ChunkId::Got => got::copy_buf(ctx, buf),
+        ChunkId::ThreadPtrs => thread_ptrs::copy_buf(ctx, buf),
+        ChunkId::ObjcStubs => objc_stubs::copy_buf(ctx, buf),
+        ChunkId::ObjcMethlist => objc_methlist::copy_buf(ctx, buf),
+        ChunkId::ObjcImageInfo => objc_imageinfo::copy_buf(ctx, buf),
+        ChunkId::SectCreate(i) => sectcreate::copy_buf(ctx, i, buf),
+        ChunkId::InitOffsets => init_offsets::copy_buf(ctx, buf),
         ChunkId::UnwindInfo => unwind_info::copy_buf(ctx, buf),
         ChunkId::EhFrame => eh_frame::copy_buf(ctx, buf),
-        ChunkId::RebaseInfo => dyld_info::rebase_info::copy_buf(ctx, buf),
-        ChunkId::BindInfo => dyld_info::bind_info::copy_buf(ctx, buf),
-        ChunkId::WeakBindInfo => dyld_info::weak_bind_info::copy_buf(ctx, buf),
-        ChunkId::LazyBindInfo => dyld_info::lazy_bind_info::copy_buf(ctx, buf),
+        ChunkId::RebaseInfo => rebase_info::copy_buf(ctx, buf),
+        ChunkId::BindInfo => bind_info::copy_buf(ctx, buf),
+        ChunkId::WeakBindInfo => weak_bind_info::copy_buf(ctx, buf),
+        ChunkId::LazyBindInfo => lazy_bind_info::copy_buf(ctx, buf),
         ChunkId::ChainedFixups => chained_fixups::copy_buf(ctx, buf),
         ChunkId::ExportTrie => export_trie::copy_buf(ctx, buf),
-        ChunkId::FunctionStarts => misc::function_starts::copy_buf(ctx, buf),
-        ChunkId::DataInCode => misc::data_in_code::copy_buf(ctx, buf),
-        ChunkId::IndirectSymtab => symtab::indirect_symtab::copy_buf(ctx, buf),
+        ChunkId::FunctionStarts => function_starts::copy_buf(ctx, buf),
+        ChunkId::DataInCode => data_in_code::copy_buf(ctx, buf),
+        ChunkId::IndirectSymtab => indirect_symtab::copy_buf(ctx, buf),
     }
 }
 

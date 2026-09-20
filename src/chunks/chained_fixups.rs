@@ -367,7 +367,7 @@ pub fn collect_fixups<E: Target>(
             fixups.push((ctx.objc_selref_addr(i), None, 0));
         }
     }
-    for (addr, _) in super::dyld_info::data_blob_pointers(ctx) {
+    for (addr, _) in super::rebase_info::data_blob_pointers(ctx) {
         fixups.push((addr, None, 0));
     }
 

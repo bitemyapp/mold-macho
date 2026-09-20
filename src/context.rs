@@ -3,22 +3,30 @@
 
 use std::marker::PhantomData;
 
+use crate::chunks::bind_info::BindInfoSection;
 use crate::chunks::chained_fixups::ChainedFixupsSection;
-use crate::chunks::dyld_info::{
-    BindInfoSection, LazyBindInfoSection, RebaseInfoSection, WeakBindInfoSection,
-};
+use crate::chunks::code_signature::CodeSignatureSection;
+use crate::chunks::data_in_code::DataInCodeSection;
 use crate::chunks::eh_frame::EhFrameSection;
 use crate::chunks::export_trie::ExportTrieSection;
-use crate::chunks::got::{
-    GotSection, LazyPtrsSection, StubHelperSection, StubsSection, ThreadPtrsSection,
-};
-use crate::chunks::misc::{
-    CodeSignatureSection, DataInCodeSection, FunctionStartsSection, InitOffsetsSection,
-    SectCreateSection,
-};
-use crate::chunks::objc::{ObjcImageInfoSection, ObjcMethlistSection, ObjcStubsSection};
-use crate::chunks::symtab::{IndirectSymtabSection, StrtabSection, SymtabSection};
+use crate::chunks::function_starts::FunctionStartsSection;
+use crate::chunks::got::GotSection;
+use crate::chunks::indirect_symtab::IndirectSymtabSection;
+use crate::chunks::init_offsets::InitOffsetsSection;
+use crate::chunks::lazy_bind_info::LazyBindInfoSection;
+use crate::chunks::lazy_ptrs::LazyPtrsSection;
+use crate::chunks::objc_imageinfo::ObjcImageInfoSection;
+use crate::chunks::objc_methlist::ObjcMethlistSection;
+use crate::chunks::objc_stubs::ObjcStubsSection;
+use crate::chunks::rebase_info::RebaseInfoSection;
+use crate::chunks::sectcreate::SectCreateSection;
+use crate::chunks::strtab::StrtabSection;
+use crate::chunks::stub_helper::StubHelperSection;
+use crate::chunks::stubs::StubsSection;
+use crate::chunks::symtab::SymtabSection;
+use crate::chunks::thread_ptrs::ThreadPtrsSection;
 use crate::chunks::unwind_info::UnwindInfoSection;
+use crate::chunks::weak_bind_info::WeakBindInfoSection;
 use crate::chunks::{
     ChunkHeader, ChunkId, OutputMachHeader, OutputSection, OutputSectionId, OutputSegment,
 };

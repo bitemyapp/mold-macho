@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::chunks::misc::{SectCreateSection, code_signature_size};
+use crate::chunks::sectcreate::SectCreateSection;
 use crate::chunks::symtab::SymtabSection;
 use crate::chunks::{
     self, ChunkId, OutputSection, OutputSectionId, OutputSegment, Tail, mach_header_size,
@@ -5102,29 +5102,18 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                                 ))
                             } else {
                                 let (rebase, bind) = rayon::join(
-                                    || {
-                                        t!(
-                                            "rebase_info",
-                                            chunks::dyld_info::build_rebase_info(shared)
-                                        )
-                                    },
-                                    || t!("bind_info", chunks::dyld_info::build_bind_info(shared)),
+                                    || t!("rebase_info", chunks::rebase_info::build(shared)),
+                                    || t!("bind_info", chunks::bind_info::build(shared)),
                                 );
-                                let (lazy, lazy_offsets) =
-                                    chunks::dyld_info::build_lazy_bind_info(shared);
-                                let weak = chunks::dyld_info::build_weak_bind_info(shared);
+                                let (lazy, lazy_offsets) = chunks::lazy_bind_info::build(shared);
+                                let weak = chunks::weak_bind_info::build(shared);
                                 Streams::Classic(rebase, bind, weak, lazy, lazy_offsets)
                             }
                         },
                         || {
                             rayon::join(
-                                || {
-                                    t!(
-                                        "function_starts",
-                                        chunks::misc::build_function_starts(shared)
-                                    )
-                                },
-                                || t!("data_in_code", chunks::misc::build_data_in_code(shared)),
+                                || t!("function_starts", chunks::function_starts::build(shared)),
+                                || t!("data_in_code", chunks::data_in_code::build(shared)),
                             )
                         },
                     )
@@ -5210,7 +5199,7 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                 }
                 ChunkId::CodeSignature => {
                     cursor = align_to(cursor, 16);
-                    code_signature_size(&ctx.args.output, cursor)
+                    chunks::code_signature::size(&ctx.args.output, cursor)
                 }
                 _ => ctx.chunk_header(id).size,
             };
@@ -5541,7 +5530,7 @@ pub fn copy_chunks<E: Target>(
     // basename); unsigned output hashes its pages the same way.
     let mut hashes: Vec<[u8; 32]> = Vec::new();
     if ctx.args.uuid || ctx.args.adhoc_codesign {
-        t!("page-hashes", hashes = chunks::misc::page_hashes(&buf[..sig_start]));
+        t!("page-hashes", hashes = chunks::code_signature::page_hashes(&buf[..sig_start]));
     }
     if ctx.args.uuid {
         t!("uuid", {
@@ -5553,13 +5542,13 @@ pub fn copy_chunks<E: Target>(
             uuid[8] = (uuid[8] & 0x3f) | 0x80; // RFC 4122 variant
             *ctx.uuid.lock().unwrap() = uuid;
             chunks::copy_mach_header(ctx, buf);
-            chunks::misc::rehash_pages(&buf[..sig_start], &mut hashes, 0..hdr_end);
+            chunks::code_signature::rehash_pages(&buf[..sig_start], &mut hashes, 0..hdr_end);
         });
     }
     out.queue(0, hdr_end);
 
     if ctx.args.adhoc_codesign {
-        t!("codesign", chunks::misc::write_code_signature(ctx, buf, &hashes));
+        t!("codesign", chunks::code_signature::write(ctx, buf, &hashes));
     }
     out.queue(sig_start, buf.len() - sig_start);
 }
