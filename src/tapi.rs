@@ -39,32 +39,32 @@ enum Json {
     Bool,
     Num,
     Str(&'static str),
-    Arr(Vec<Json>),
-    Obj(Vec<(&'static str, Json)>),
+    Arr(Vec<Self>),
+    Obj(Vec<(&'static str, Self)>),
 }
 
 impl Json {
-    fn get(&self, key: &str) -> Option<&Json> {
+    fn get(&self, key: &str) -> Option<&Self> {
         match self {
-            Json::Obj(fields) => fields.iter().find(|(k, _)| *k == key).map(|(_, v)| v),
+            Self::Obj(fields) => fields.iter().find(|(k, _)| *k == key).map(|(_, v)| v),
             _ => None,
         }
     }
-    fn arr(&self) -> &[Json] {
+    fn arr(&self) -> &[Self] {
         match self {
-            Json::Arr(items) => items,
+            Self::Arr(items) => items,
             _ => &[],
         }
     }
     fn str(&self) -> Option<&'static str> {
         match self {
-            Json::Str(s) => Some(s),
+            Self::Str(s) => Some(s),
             _ => None,
         }
     }
     /// The strings of an array-valued key.
     fn strs(&self, key: &str) -> impl Iterator<Item = &'static str> {
-        self.get(key).map(Json::arr).unwrap_or(&[]).iter().filter_map(Json::str)
+        self.get(key).map(Self::arr).unwrap_or(&[]).iter().filter_map(Self::str)
     }
 }
 

@@ -27,8 +27,8 @@ pub struct ChainedFixupsSection {
 }
 
 impl ChainedFixupsSection {
-    pub fn new() -> ChainedFixupsSection {
-        ChainedFixupsSection {
+    pub fn new() -> Self {
+        Self {
             hdr: ChunkHeader::linkedit(),
             contents: Vec::new(),
             fixups: Vec::new(),

@@ -19,13 +19,13 @@ impl SymbolFile {
     const DYNAMIC_LOOKUP: u32 = u32::MAX - 1;
 
     #[inline]
-    fn none() -> SymbolFile {
-        SymbolFile(Self::NONE)
+    fn none() -> Self {
+        Self(Self::NONE)
     }
 
     #[inline]
-    fn some(file: FileId) -> SymbolFile {
-        SymbolFile(match file {
+    fn some(file: FileId) -> Self {
+        Self(match file {
             FileId::Obj(i) => {
                 debug_assert!(i < Self::DYLIB);
                 i
@@ -224,8 +224,8 @@ impl Symbol {
 }
 
 impl Clone for Symbol {
-    fn clone(&self) -> Symbol {
-        Symbol {
+    fn clone(&self) -> Self {
+        Self {
             name_ptr: self.name_ptr,
             name_len: self.name_len,
             file: self.file,
@@ -267,7 +267,7 @@ pub struct SymAux {
 }
 
 impl SymAux {
-    pub const NONE: SymAux = SymAux {
+    pub const NONE: Self = Self {
         stub_idx: NO_IDX,
         got_idx: NO_IDX,
         tlv_idx: NO_IDX,
@@ -281,14 +281,14 @@ impl SymAux {
 pub static NONE_AUX: SymAux = SymAux::NONE;
 
 impl Default for SymAux {
-    fn default() -> SymAux {
-        SymAux::NONE
+    fn default() -> Self {
+        Self::NONE
     }
 }
 
 impl Symbol {
-    pub(crate) fn new(name: &'static str) -> Symbol {
-        Symbol {
+    pub(crate) fn new(name: &'static str) -> Self {
+        Self {
             name_ptr: name.as_ptr() as usize,
             name_len: u32::try_from(name.len()).expect("symbol name is larger than 4 GiB"),
             file: SymbolFile::none(),
@@ -342,7 +342,7 @@ struct Key {
 }
 
 impl PartialEq for Key {
-    fn eq(&self, other: &Key) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.hash == other.hash && self.key == other.key
     }
 }
@@ -392,11 +392,8 @@ impl<V> PrehashedMap<V> {
 }
 
 impl Default for SymbolTable {
-    fn default() -> SymbolTable {
-        SymbolTable {
-            shards: (0..NUM_SHARDS).map(|_| ShardMap::default()).collect(),
-            syms: Vec::new(),
-        }
+    fn default() -> Self {
+        Self { shards: (0..NUM_SHARDS).map(|_| ShardMap::default()).collect(), syms: Vec::new() }
     }
 }
 

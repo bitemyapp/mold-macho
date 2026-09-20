@@ -96,11 +96,11 @@ impl RelocTarget {
     #[inline]
     pub fn pack(self) -> u32 {
         match self {
-            RelocTarget::Sym(i) => {
+            Self::Sym(i) => {
                 debug_assert!(i & TARGET_SECTION == 0);
                 i
             }
-            RelocTarget::Section(i) => {
+            Self::Section(i) => {
                 debug_assert!(i & TARGET_SECTION == 0);
                 i | TARGET_SECTION
             }

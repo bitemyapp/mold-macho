@@ -242,7 +242,7 @@ pub struct Args {
 
 impl Default for Args {
     fn default() -> Self {
-        Args {
+        Self {
             output: "a.out".to_string(),
             output_type: MH_EXECUTE,
             install_name: None,

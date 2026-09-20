@@ -52,10 +52,10 @@ struct SipHash13_128 {
 
 impl SipHash13_128 {
     #[inline]
-    fn new(key: &[u8; 16]) -> SipHash13_128 {
+    fn new(key: &[u8; 16]) -> Self {
         let k0 = u64::from_le_bytes(key[..8].try_into().unwrap());
         let k1 = u64::from_le_bytes(key[8..].try_into().unwrap());
-        SipHash13_128 {
+        Self {
             v0: 0x736f_6d65_7073_6575 ^ k0,
             v1: 0x646f_7261_6e64_6f6d ^ k1 ^ 0xee,
             v2: 0x6c79_6765_6e65_7261 ^ k0,
@@ -170,9 +170,9 @@ struct DigestMap {
     slots: Vec<DigestSlot>,
 }
 impl DigestMap {
-    fn new(n: usize) -> DigestMap {
+    fn new(n: usize) -> Self {
         let len = n.saturating_mul(2).next_power_of_two();
-        DigestMap {
+        Self {
             round: 1,
             mask: len - 1,
             slots: (0..len)

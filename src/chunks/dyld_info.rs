@@ -19,8 +19,8 @@ pub struct RebaseInfoSection {
 }
 
 impl RebaseInfoSection {
-    pub fn new() -> RebaseInfoSection {
-        RebaseInfoSection { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
     }
 }
 
@@ -42,8 +42,8 @@ pub struct BindInfoSection {
 }
 
 impl BindInfoSection {
-    pub fn new() -> BindInfoSection {
-        BindInfoSection { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
     }
 }
 
@@ -67,8 +67,8 @@ pub struct WeakBindInfoSection {
 }
 
 impl WeakBindInfoSection {
-    pub fn new() -> WeakBindInfoSection {
-        WeakBindInfoSection { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
     }
 }
 
@@ -93,12 +93,8 @@ pub struct LazyBindInfoSection {
 }
 
 impl LazyBindInfoSection {
-    pub fn new() -> LazyBindInfoSection {
-        LazyBindInfoSection {
-            hdr: ChunkHeader::linkedit(),
-            contents: Vec::new(),
-            offsets: Vec::new(),
-        }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit(), contents: Vec::new(), offsets: Vec::new() }
     }
 }
 

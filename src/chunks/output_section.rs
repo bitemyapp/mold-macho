@@ -53,8 +53,8 @@ pub struct OutputSection {
 }
 
 impl OutputSection {
-    pub fn new(segname: &'static str, sectname: &str) -> OutputSection {
-        OutputSection {
+    pub fn new(segname: &'static str, sectname: &str) -> Self {
+        Self {
             hdr: ChunkHeader::new(segname, sectname),
             members: Vec::new(),
             thunks: Vec::new(),

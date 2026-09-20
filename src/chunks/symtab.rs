@@ -34,8 +34,8 @@ pub struct SymtabSection {
 }
 
 impl SymtabSection {
-    pub fn new() -> SymtabSection {
-        SymtabSection {
+    pub fn new() -> Self {
+        Self {
             hdr: ChunkHeader::linkedit(),
             entries: Vec::new(),
             strtab_size: 0,
@@ -55,8 +55,8 @@ pub struct StrtabSection {
 }
 
 impl StrtabSection {
-    pub fn new() -> StrtabSection {
-        StrtabSection { hdr: ChunkHeader::linkedit() }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit() }
     }
 }
 
@@ -68,8 +68,8 @@ pub struct IndirectSymtabSection {
 }
 
 impl IndirectSymtabSection {
-    pub fn new() -> IndirectSymtabSection {
-        IndirectSymtabSection { hdr: ChunkHeader::linkedit() }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit() }
     }
 }
 

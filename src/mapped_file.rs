@@ -18,7 +18,7 @@ pub struct MappedFile {
     pub name: String,
     pub data: &'static [u8],
     /// For an archive member, the containing archive's name.
-    pub parent: Option<&'static MappedFile>,
+    pub parent: Option<&'static Self>,
 }
 
 impl MappedFile {
@@ -27,7 +27,7 @@ impl MappedFile {
     /// repeatedly) gets one mapping, which also lets downstream caches
     /// key by data address. A path that is not a regular file (a
     /// framework directory, say) reads as not found.
-    fn open_impl(path: &Path) -> io::Result<&'static MappedFile> {
+    fn open_impl(path: &Path) -> io::Result<&'static Self> {
         static CACHE: std::sync::Mutex<
             Option<std::collections::HashMap<std::path::PathBuf, &'static MappedFile>>,
         > = std::sync::Mutex::new(None);
@@ -54,7 +54,7 @@ impl MappedFile {
             std::mem::forget(map);
             slice
         };
-        let mf: &'static MappedFile = Box::leak(Box::new(MappedFile {
+        let mf: &'static Self = Box::leak(Box::new(Self {
             name: path.to_string_lossy().into_owned(),
             data,
             parent: None,
@@ -71,7 +71,7 @@ impl MappedFile {
     /// failure - permission denied, an unmappable file - is reported
     /// with the operating system's own words rather than as "not
     /// found".
-    pub fn open(path: &Path) -> Option<&'static MappedFile> {
+    pub fn open(path: &Path) -> Option<&'static Self> {
         match Self::open_impl(path) {
             Ok(mf) => Some(mf),
             Err(e) if e.kind() == io::ErrorKind::NotFound => None,
@@ -80,12 +80,12 @@ impl MappedFile {
     }
 
     /// Maps a file that must exist.
-    pub fn must_open(path: &Path) -> &'static MappedFile {
+    pub fn must_open(path: &Path) -> &'static Self {
         Self::open_impl(path).unwrap_or_else(|e| fatal!("cannot open {}: {e}", path.display()))
     }
 
     /// Creates a view of a slice of this file, for an archive member.
-    pub fn slice(&'static self, name: String, data: &'static [u8]) -> &'static MappedFile {
-        Box::leak(Box::new(MappedFile { name, data, parent: Some(self) }))
+    pub fn slice(&'static self, name: String, data: &'static [u8]) -> &'static Self {
+        Box::leak(Box::new(Self { name, data, parent: Some(self) }))
     }
 }

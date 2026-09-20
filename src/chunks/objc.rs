@@ -44,11 +44,11 @@ pub struct ObjcStubsSection {
 }
 
 impl ObjcStubsSection {
-    pub fn new() -> ObjcStubsSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__TEXT", "__objc_stubs");
         hdr.flags = S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS;
         hdr.p2align = 5;
-        ObjcStubsSection {
+        Self {
             hdr,
             symbols: Vec::new(),
             selref: Vec::new(),
@@ -82,10 +82,10 @@ pub struct ObjcMethlistSection {
 }
 
 impl ObjcMethlistSection {
-    pub fn new() -> ObjcMethlistSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__TEXT", "__objc_methlist");
         hdr.p2align = 3;
-        ObjcMethlistSection { hdr, lists: Vec::new() }
+        Self { hdr, lists: Vec::new() }
     }
 }
 
@@ -138,10 +138,10 @@ pub struct ObjcImageInfoSection {
 }
 
 impl ObjcImageInfoSection {
-    pub fn new() -> ObjcImageInfoSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__DATA", "__objc_imageinfo");
         hdr.p2align = 2;
-        ObjcImageInfoSection { hdr, flags: 0 }
+        Self { hdr, flags: 0 }
     }
 }
 

@@ -18,14 +18,10 @@ pub struct SectCreateSection {
 }
 
 impl SectCreateSection {
-    pub fn new(
-        segname: &'static str,
-        sectname: &str,
-        contents: &'static [u8],
-    ) -> SectCreateSection {
+    pub fn new(segname: &'static str, sectname: &str, contents: &'static [u8]) -> Self {
         let mut hdr = ChunkHeader::new(segname, sectname);
         hdr.size = contents.len() as u64;
-        SectCreateSection { hdr, contents }
+        Self { hdr, contents }
     }
 }
 
@@ -49,11 +45,11 @@ pub struct InitOffsetsSection {
 }
 
 impl InitOffsetsSection {
-    pub fn new() -> InitOffsetsSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__TEXT", "__init_offsets");
         hdr.flags = S_INIT_FUNC_OFFSETS;
         hdr.p2align = 2;
-        InitOffsetsSection { hdr, init_funcs: Vec::new() }
+        Self { hdr, init_funcs: Vec::new() }
     }
 }
 
@@ -78,8 +74,8 @@ pub struct FunctionStartsSection {
 }
 
 impl FunctionStartsSection {
-    pub fn new() -> FunctionStartsSection {
-        FunctionStartsSection { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
     }
 }
 
@@ -104,8 +100,8 @@ pub struct DataInCodeSection {
 }
 
 impl DataInCodeSection {
-    pub fn new() -> DataInCodeSection {
-        DataInCodeSection { hdr: ChunkHeader::linkedit(), entries: Vec::new() }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit(), entries: Vec::new() }
     }
 }
 
@@ -130,8 +126,8 @@ pub struct CodeSignatureSection {
 }
 
 impl CodeSignatureSection {
-    pub fn new() -> CodeSignatureSection {
-        CodeSignatureSection { hdr: ChunkHeader::linkedit() }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit() }
     }
 }
 

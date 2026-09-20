@@ -16,8 +16,8 @@ pub struct ExportTrieSection {
 }
 
 impl ExportTrieSection {
-    pub fn new() -> ExportTrieSection {
-        ExportTrieSection { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
+    pub fn new() -> Self {
+        Self { hdr: ChunkHeader::linkedit(), contents: Vec::new() }
     }
 }
 
@@ -43,8 +43,8 @@ impl Export {
     /// means the same name).
     fn terminal_size(self) -> usize {
         match self {
-            Export::Addr { flags, addr } => uleb_len(flags as u64) + uleb_len(addr),
-            Export::Reexport { ordinal, name } => {
+            Self::Addr { flags, addr } => uleb_len(flags as u64) + uleb_len(addr),
+            Self::Reexport { ordinal, name } => {
                 uleb_len(EXPORT_SYMBOL_FLAGS_REEXPORT as u64)
                     + uleb_len(ordinal as u64)
                     + name.len()
@@ -59,7 +59,7 @@ impl Export {
 struct TrieNode {
     /// Edges can split UTF-8 code points, so labels borrow bytes rather
     /// than strings from the symbol names.
-    children: Vec<(&'static [u8], TrieNode)>,
+    children: Vec<(&'static [u8], Self)>,
     /// The exported symbol ending here, if any.
     export: Option<Export>,
     offset: usize,

@@ -17,11 +17,11 @@ pub struct StubsSection {
 }
 
 impl StubsSection {
-    pub fn new() -> StubsSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__TEXT", "__stubs");
         hdr.flags = S_SYMBOL_STUBS | S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS;
         hdr.p2align = 2;
-        StubsSection { hdr, symbols: Vec::new() }
+        Self { hdr, symbols: Vec::new() }
     }
 }
 
@@ -47,11 +47,11 @@ pub struct StubHelperSection {
 }
 
 impl StubHelperSection {
-    pub fn new() -> StubHelperSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__TEXT", "__stub_helper");
         hdr.flags = S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS;
         hdr.p2align = 2;
-        StubHelperSection { hdr, dyld_stub_binder: None, dyld_private_isec: u32::MAX }
+        Self { hdr, dyld_stub_binder: None, dyld_private_isec: u32::MAX }
     }
 }
 
@@ -71,11 +71,11 @@ pub struct LazyPtrsSection {
 }
 
 impl LazyPtrsSection {
-    pub fn new() -> LazyPtrsSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__DATA", "__la_symbol_ptr");
         hdr.flags = S_LAZY_SYMBOL_POINTERS;
         hdr.p2align = 3;
-        LazyPtrsSection { hdr }
+        Self { hdr }
     }
 }
 
@@ -106,11 +106,11 @@ pub struct GotSection {
 }
 
 impl GotSection {
-    pub fn new() -> GotSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__DATA", "__got");
         hdr.flags = S_NON_LAZY_SYMBOL_POINTERS;
         hdr.p2align = 3;
-        GotSection { hdr, got_syms: Vec::new(), objc_classref_slots: Vec::new() }
+        Self { hdr, got_syms: Vec::new(), objc_classref_slots: Vec::new() }
     }
 }
 
@@ -138,11 +138,11 @@ pub struct ThreadPtrsSection {
 }
 
 impl ThreadPtrsSection {
-    pub fn new() -> ThreadPtrsSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__DATA", "__thread_ptrs");
         hdr.flags = S_THREAD_LOCAL_VARIABLE_POINTERS;
         hdr.p2align = 3;
-        ThreadPtrsSection { hdr, symbols: Vec::new() }
+        Self { hdr, symbols: Vec::new() }
     }
 }
 

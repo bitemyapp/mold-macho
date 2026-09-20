@@ -92,7 +92,7 @@ impl OutputFile {
     /// Creates the output file for the `len`-byte buffer at `buf` and
     /// starts the writers. The buffer must outlive the OutputFile, and a
     /// range must not be modified after it has been queued.
-    pub fn create(path: &str, buf: *const u8, len: usize) -> OutputFile {
+    pub fn create(path: &str, buf: *const u8, len: usize) -> Self {
         // Remove an existing file first. Overwriting a running
         // executable is an error on some systems, and on macOS the
         // kernel caches code signature state per vnode, so a fresh file
@@ -128,7 +128,7 @@ impl OutputFile {
             })
             .collect();
 
-        OutputFile { path: path.to_string(), len, tx: Some(tx), threads }
+        Self { path: path.to_string(), len, tx: Some(tx), threads }
     }
 
     /// Queues the buffer's bytes at `off..off + len` for writing. They

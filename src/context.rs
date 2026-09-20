@@ -127,8 +127,8 @@ pub struct Context<E: Target> {
 }
 
 impl<E: Target> Context<E> {
-    pub fn new(args: Args) -> Context<E> {
-        Context {
+    pub fn new(args: Args) -> Self {
+        Self {
             args,
             objs: Vec::new(),
             dylibs: Vec::new(),

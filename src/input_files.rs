@@ -106,13 +106,13 @@ impl ObjectFile {
     /// and symbols such as __mh_execute_header. It has no file behind
     /// it and no symbol table of its own; mold-rust's
     /// ObjectFile::internal.
-    pub fn internal() -> ObjectFile {
+    pub fn internal() -> Self {
         let mf: &'static MappedFile = Box::leak(Box::new(MappedFile {
             name: "<synthesized>".to_string(),
             data: &[],
             parent: None,
         }));
-        ObjectFile {
+        Self {
             mf,
             is_alive: true,
             priority: 0,

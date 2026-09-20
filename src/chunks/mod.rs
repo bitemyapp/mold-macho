@@ -52,8 +52,8 @@ pub struct ChunkHeader {
 
 impl ChunkHeader {
     /// The header of a section of the image.
-    pub fn new(segname: &'static str, sectname: &str) -> ChunkHeader {
-        ChunkHeader {
+    pub fn new(segname: &'static str, sectname: &str) -> Self {
+        Self {
             segname,
             sectname: sectname.to_string(),
             addr: 0,
@@ -70,8 +70,8 @@ impl ChunkHeader {
 
     /// The header of a __LINKEDIT table, which no section header
     /// describes.
-    pub fn linkedit() -> ChunkHeader {
-        let mut hdr = ChunkHeader::new("__LINKEDIT", "");
+    pub fn linkedit() -> Self {
+        let mut hdr = Self::new("__LINKEDIT", "");
         hdr.is_sect = false;
         hdr
     }
@@ -87,9 +87,9 @@ pub struct OutputSectionId(NonZeroU32);
 
 impl OutputSectionId {
     #[inline]
-    pub fn new(index: u32) -> OutputSectionId {
+    pub fn new(index: u32) -> Self {
         let encoded = index.checked_add(1).expect("too many output sections");
-        OutputSectionId(NonZeroU32::new(encoded).unwrap())
+        Self(NonZeroU32::new(encoded).unwrap())
     }
 
     #[inline]
@@ -140,31 +140,31 @@ pub enum ChunkId {
 impl ChunkId {
     /// The chunks that exist at most once, in the order `pack` numbers
     /// them.
-    const UNITS: [ChunkId; 24] = [
-        ChunkId::MachHeader,
-        ChunkId::Stubs,
-        ChunkId::StubHelper,
-        ChunkId::LazyPtrs,
-        ChunkId::Got,
-        ChunkId::ThreadPtrs,
-        ChunkId::ObjcStubs,
-        ChunkId::ObjcMethlist,
-        ChunkId::ObjcImageInfo,
-        ChunkId::InitOffsets,
-        ChunkId::UnwindInfo,
-        ChunkId::EhFrame,
-        ChunkId::RebaseInfo,
-        ChunkId::BindInfo,
-        ChunkId::WeakBindInfo,
-        ChunkId::LazyBindInfo,
-        ChunkId::ChainedFixups,
-        ChunkId::ExportTrie,
-        ChunkId::FunctionStarts,
-        ChunkId::DataInCode,
-        ChunkId::IndirectSymtab,
-        ChunkId::Symtab,
-        ChunkId::Strtab,
-        ChunkId::CodeSignature,
+    const UNITS: [Self; 24] = [
+        Self::MachHeader,
+        Self::Stubs,
+        Self::StubHelper,
+        Self::LazyPtrs,
+        Self::Got,
+        Self::ThreadPtrs,
+        Self::ObjcStubs,
+        Self::ObjcMethlist,
+        Self::ObjcImageInfo,
+        Self::InitOffsets,
+        Self::UnwindInfo,
+        Self::EhFrame,
+        Self::RebaseInfo,
+        Self::BindInfo,
+        Self::WeakBindInfo,
+        Self::LazyBindInfo,
+        Self::ChainedFixups,
+        Self::ExportTrie,
+        Self::FunctionStarts,
+        Self::DataInCode,
+        Self::IndirectSymtab,
+        Self::Symtab,
+        Self::Strtab,
+        Self::CodeSignature,
     ];
 
     /// The id as one u32 (never u32::MAX), for InputSection, whose
@@ -175,23 +175,23 @@ impl ChunkId {
     /// also stand for a GOT slot or a rewritten method list.
     pub fn pack(self) -> u32 {
         match self {
-            ChunkId::Output(id) => {
+            Self::Output(id) => {
                 let i = id.index() as u32;
                 assert!(i < 1 << 30, "too many output sections");
                 i
             }
-            ChunkId::SectCreate(i) => (1 << 30) | i,
-            _ => (2 << 30) | ChunkId::UNITS.iter().position(|&c| c == self).unwrap() as u32,
+            Self::SectCreate(i) => (1 << 30) | i,
+            _ => (2 << 30) | Self::UNITS.iter().position(|&c| c == self).unwrap() as u32,
         }
     }
 
     #[inline]
-    pub fn unpack(v: u32) -> ChunkId {
+    pub fn unpack(v: u32) -> Self {
         let i = v & ((1 << 30) - 1);
         match v >> 30 {
-            0 => ChunkId::Output(OutputSectionId::new(i)),
-            1 => ChunkId::SectCreate(i),
-            _ => ChunkId::UNITS[i as usize],
+            0 => Self::Output(OutputSectionId::new(i)),
+            1 => Self::SectCreate(i),
+            _ => Self::UNITS[i as usize],
         }
     }
 }
@@ -204,10 +204,10 @@ pub struct OutputMachHeader {
 }
 
 impl OutputMachHeader {
-    pub fn new() -> OutputMachHeader {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__TEXT", "");
         hdr.is_sect = false;
-        OutputMachHeader { hdr }
+        Self { hdr }
     }
 }
 
@@ -220,8 +220,8 @@ pub struct OutputSegment {
 }
 
 impl OutputSegment {
-    pub fn new(name: &'static str) -> OutputSegment {
-        OutputSegment { name, chunks: Vec::new(), cmd: SegmentCommand::default() }
+    pub fn new(name: &'static str) -> Self {
+        Self { name, chunks: Vec::new(), cmd: SegmentCommand::default() }
     }
 }
 

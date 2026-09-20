@@ -18,10 +18,10 @@ pub struct UnwindInfoSection {
 }
 
 impl UnwindInfoSection {
-    pub fn new() -> UnwindInfoSection {
+    pub fn new() -> Self {
         let mut hdr = ChunkHeader::new("__TEXT", "__unwind_info");
         hdr.p2align = 2;
-        UnwindInfoSection { hdr, contents: Vec::new(), personalities: Vec::new() }
+        Self { hdr, contents: Vec::new(), personalities: Vec::new() }
     }
 }
 
