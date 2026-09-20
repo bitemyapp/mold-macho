@@ -31,11 +31,11 @@ pub fn fork_child() {
             // for its death.
             libc::close(pipefd[1]);
             let mut buf = [0u8; 1];
-            if libc::read(pipefd[0], buf.as_mut_ptr() as *mut libc::c_void, 1) == 1 {
+            if libc::read(pipefd[0], buf.as_mut_ptr().cast::<libc::c_void>(), 1) == 1 {
                 libc::_exit(0);
             }
             let mut status = 0;
-            libc::waitpid(pid, &mut status, 0);
+            libc::waitpid(pid, &raw mut status, 0);
             if libc::WIFEXITED(status) {
                 libc::_exit(libc::WEXITSTATUS(status));
             }
@@ -59,6 +59,6 @@ pub fn notify_parent() {
     let buf = [1u8];
     // SAFETY: fd is a valid pipe write end.
     unsafe {
-        libc::write(fd, buf.as_ptr() as *const libc::c_void, 1);
+        libc::write(fd, buf.as_ptr().cast::<libc::c_void>(), 1);
     }
 }

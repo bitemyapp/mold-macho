@@ -1014,11 +1014,11 @@ pub fn do_lto<E: Target>(ctx: &mut Context<E>) -> bool {
         }
 
         let mut size = 0usize;
-        let ptr = (plugin.codegen_compile)(cg, &mut size);
+        let ptr = (plugin.codegen_compile)(cg, &raw mut size);
         if ptr.is_null() {
             fatal!("lto_codegen_compile failed: {}", plugin.error_message());
         }
-        std::slice::from_raw_parts(ptr as *const u8, size).to_vec()
+        std::slice::from_raw_parts(ptr.cast::<u8>(), size).to_vec()
     };
 
     // -object_path_lto keeps the machine-code object LTO produced.
@@ -1805,7 +1805,7 @@ pub fn print_dependencies<E: Target>(ctx: &Context<E>) {
             let provider = match sym.file() {
                 Some(FileId::Obj(idx)) => {
                     let idx = idx as usize;
-                    if !ctx.objs[idx].is_alive || std::ptr::eq(&ctx.objs[idx], obj) {
+                    if !ctx.objs[idx].is_alive || std::ptr::eq(&raw const ctx.objs[idx], obj) {
                         continue;
                     }
                     file_display(&ctx.objs[idx])
@@ -3761,7 +3761,7 @@ pub fn create_output_sections<E: Target>(ctx: &mut Context<E>) {
             continue;
         }
         let hdr_ref = ctx.hdr_of(&ctx.isecs[i]);
-        let hdr_ptr = hdr_ref as *const crate::macho::MachSection;
+        let hdr_ptr = std::ptr::from_ref::<crate::macho::MachSection>(hdr_ref);
         // A copy: the header lives in its object, which stays borrowed
         // while the section is placed below otherwise.
         let hdr = *hdr_ref;

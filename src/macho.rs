@@ -21,18 +21,23 @@ pub unsafe trait FileRecord: Copy + Default {
         assert!(buf.len() >= size_of::<Self>());
         // SAFETY: the buffer is large enough, and any bit pattern is a
         // valid value of the record type.
-        unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const Self) }
+        unsafe { std::ptr::read_unaligned(buf.as_ptr().cast::<Self>()) }
     }
 
     fn write_to(&self, buf: &mut [u8]) {
         assert!(buf.len() >= size_of::<Self>());
         // SAFETY: the buffer is large enough.
-        unsafe { std::ptr::write_unaligned(buf.as_mut_ptr() as *mut Self, *self) }
+        unsafe { std::ptr::write_unaligned(buf.as_mut_ptr().cast::<Self>(), *self) }
     }
 
     fn as_bytes(&self) -> &[u8] {
         // SAFETY: the record is repr(C) with no padding.
-        unsafe { std::slice::from_raw_parts(self as *const Self as *const u8, size_of::<Self>()) }
+        unsafe {
+            std::slice::from_raw_parts(
+                std::ptr::from_ref::<Self>(self).cast::<u8>(),
+                size_of::<Self>(),
+            )
+        }
     }
 }
 

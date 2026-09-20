@@ -363,9 +363,8 @@ fn memchr_from(bytes: &[u8], needle: u8, from: usize) -> Option<usize> {
         return None;
     }
     // SAFETY: memchr reads within the given range.
-    let p = unsafe {
-        libc::memchr(bytes.as_ptr().add(from) as *const _, needle as i32, bytes.len() - from)
-    };
+    let p =
+        unsafe { libc::memchr(bytes.as_ptr().add(from).cast(), needle as i32, bytes.len() - from) };
     if p.is_null() { None } else { Some(p as usize - bytes.as_ptr() as usize) }
 }
 

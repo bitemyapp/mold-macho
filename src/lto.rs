@@ -71,7 +71,7 @@ pub fn load_plugin(path: Option<&str>) -> Plugin {
 
         macro_rules! dlsym {
             ($name:literal) => {{
-                let sym = libc::dlsym(handle, concat!($name, "\0").as_ptr() as *const c_char);
+                let sym = libc::dlsym(handle, concat!($name, "\0").as_ptr().cast());
                 if sym.is_null() {
                     fatal!("libLTO does not provide {}", $name);
                 }
@@ -111,7 +111,7 @@ pub fn parse_module(plugin: &Plugin, data: &[u8], name: &str) -> (usize, Vec<Lto
     // what it needs.
     let module = unsafe {
         (plugin.module_create_from_memory_with_path)(
-            data.as_ptr() as *const c_void,
+            data.as_ptr().cast::<c_void>(),
             data.len(),
             cname.as_ptr(),
         )

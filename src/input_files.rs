@@ -286,7 +286,7 @@ fn nlists_slice(data: &'static [u8], off: usize, n: usize) -> Option<&'static [N
     // SAFETY: in bounds and aligned (checked above); NList is a
     // #[repr(C)] struct of plain integers, valid for every bit pattern;
     // the mapping lives for the whole link.
-    Some(unsafe { std::slice::from_raw_parts(data.as_ptr().add(off) as *const NList, n) })
+    Some(unsafe { std::slice::from_raw_parts(data.as_ptr().add(off).cast::<NList>(), n) })
 }
 
 /// The nlist index ranges of an object's local (with stab) and external
@@ -514,7 +514,7 @@ pub fn stage_object<E: Target>(
                     while start < contents.len() {
                         points.push(sect.addr + start as u64);
                         let rest = &contents[start..];
-                        let p = unsafe { libc::memchr(rest.as_ptr() as *const _, 0, rest.len()) };
+                        let p = unsafe { libc::memchr(rest.as_ptr().cast(), 0, rest.len()) };
                         if p.is_null() {
                             fatal!("{}: malformed __cstring section", mf.name);
                         }
@@ -1161,7 +1161,7 @@ fn symbol_name(strtab: &'static [u8], nlist: &NList) -> &'static str {
     // SAFETY: memchr reads within `rest`; the result is bounded by
     // its length.
     let len = unsafe {
-        let p = libc::memchr(rest.as_ptr() as *const _, 0, rest.len());
+        let p = libc::memchr(rest.as_ptr().cast(), 0, rest.len());
         if p.is_null() { rest.len() } else { (p as usize) - (rest.as_ptr() as usize) }
     };
     // SAFETY: the whole table was checked as UTF-8 up front; any
