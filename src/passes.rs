@@ -3358,7 +3358,10 @@ pub fn create_symbol_reexports<E: Target>(ctx: &mut Context<E>) {
     }
     for name in &ctx.args.reexported_names {
         if ctx.symbols.get(name).is_none_or(|id| !ctx.symbols[id].is_defined()) {
-            error!("-reexported_symbols_list: undefined symbol: {}", crate::error::demangle(name));
+            error!(
+                "-reexported_symbols_list: undefined symbol: {}",
+                crate::util::demangle::display_name(name)
+            );
         }
     }
     let targets: Vec<_> = ctx
@@ -3419,7 +3422,10 @@ pub fn add_synthetic_symbols<E: Target>(ctx: &mut Context<E>) {
     let aliases = std::mem::take(&mut ctx.args.aliases);
     for (existing, new) in &aliases {
         let Some(src) = ctx.symbols.get(existing) else {
-            error!("-alias: undefined base symbol: {}", crate::error::demangle(existing));
+            error!(
+                "-alias: undefined base symbol: {}",
+                crate::util::demangle::display_name(existing)
+            );
             continue;
         };
         if !ctx.symbols[src].is_defined() {
@@ -5350,7 +5356,10 @@ pub fn resolve_entry<E: Target>(ctx: &mut Context<E>) {
         Some(id) if ctx.symbols[id].is_imported() => ctx.entry_addr = ctx.sym_stub_addr(id),
         Some(id) if ctx.symbols[id].is_defined() => ctx.entry_addr = ctx.sym_addr(id),
         _ => {
-            error!("undefined symbol for entry point: {}", crate::error::demangle(&ctx.args.entry))
+            error!(
+                "undefined symbol for entry point: {}",
+                crate::util::demangle::display_name(&ctx.args.entry)
+            )
         }
     }
 }

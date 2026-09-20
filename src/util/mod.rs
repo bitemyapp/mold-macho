@@ -1,5 +1,6 @@
 //! Small helpers shared across the linker.
 
+pub mod demangle;
 pub mod glob;
 pub mod perf;
 

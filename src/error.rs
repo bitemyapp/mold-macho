@@ -3,21 +3,29 @@
 //! Errors don't abort the link immediately: the linker keeps going so that
 //! all problems are reported in one run, then exits before writing the
 //! output. Fatal errors are for conditions the linker can't continue past.
-//!
-//! mold links once per process, so the diagnostic settings, the error
-//! state and the lock that keeps worker threads' messages from
-//! interleaving are process-wide, as in mold-rust: nothing has to carry
-//! a diagnostics handle to be able to report.
 
 use std::fmt;
 use std::io::{self, Write};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// Whether to demangle symbol names in diagnostics. This is process-wide
+/// state so that `Display` implementations, which have no access to the
+/// linker context, can consult it.
+static DEMANGLE: AtomicBool = AtomicBool::new(true);
+
+pub fn set_demangle(enabled: bool) {
+    DEMANGLE.store(enabled, Ordering::Relaxed);
+}
+
+pub fn demangle_enabled() -> bool {
+    DEMANGLE.load(Ordering::Relaxed)
+}
+
+// Diagnostic settings, error state and output serialization are process-wide.
 static COLOR: AtomicBool = AtomicBool::new(false);
 static FATAL_WARNINGS: AtomicBool = AtomicBool::new(false);
 static SUPPRESS_WARNINGS: AtomicBool = AtomicBool::new(false);
-static DEMANGLE: AtomicBool = AtomicBool::new(false);
 static HAS_ERROR: AtomicBool = AtomicBool::new(false);
 static OUTPUT_LOCK: Mutex<()> = Mutex::new(());
 
@@ -33,27 +41,8 @@ pub fn set_suppress_warnings(on: bool) {
     SUPPRESS_WARNINGS.store(on, Ordering::Relaxed);
 }
 
-pub fn set_demangle(on: bool) {
-    DEMANGLE.store(on, Ordering::Relaxed);
-}
-
-/// A diagnostic spelling only: symbol lookup and output use the
-/// original name. Mach-O adds an underscore to the Itanium ABI name.
-pub fn demangle(name: &str) -> std::borrow::Cow<'_, str> {
-    if DEMANGLE.load(Ordering::Relaxed)
-        && name.starts_with("__Z")
-        && let Ok(sym) = cpp_demangle::Symbol::new(&name.as_bytes()[1..])
-        && let Ok(text) = sym.demangle(&cpp_demangle::DemangleOptions::default())
-    {
-        return text.into();
-    }
-    name.into()
-}
-
-pub fn has_error() -> bool {
-    HAS_ERROR.load(Ordering::Relaxed)
-}
-
+// Format each message before taking the lock so diagnostics from different
+// threads cannot interleave.
 fn emit(prefix_mono: &str, prefix_color: &str, msg: fmt::Arguments) {
     let prefix = if COLOR.load(Ordering::Relaxed) { prefix_color } else { prefix_mono };
     let text = format!("{prefix}{msg}\n");
@@ -88,7 +77,7 @@ pub fn warn(msg: fmt::Arguments) {
 
 /// Exits with a failure status if any error has been reported.
 pub fn checkpoint() {
-    if has_error() {
+    if HAS_ERROR.load(Ordering::Relaxed) {
         exit_after_cleanup(1);
     }
 }
