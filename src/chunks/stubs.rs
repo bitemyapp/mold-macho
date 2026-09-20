@@ -23,6 +23,12 @@ impl StubsSection {
     }
 }
 
+impl Default for StubsSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     E::write_stubs(ctx, ctx.stubs.hdr.addr, buf);
 }

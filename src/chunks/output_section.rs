@@ -124,11 +124,11 @@ pub fn copy_buf<E: Target>(ctx: &Context<E>, id: OutputSectionId, buf: &mut [u8]
         }
         Tail::ObjcSelrefs => {
             let stubs = &ctx.objc_stubs;
-            for i in 0..stubs.symbols.len() {
+            for (i, &slot) in stubs.tail[..stubs.symbols.len()].iter().enumerate() {
                 if ctx.objc_stub_reuses_selref(i) {
                     continue;
                 }
-                let slot = stubs.tail[i] as usize;
+                let slot = slot as usize;
                 let val = ctx.objc_methname_addr(i);
                 tail[slot * 8..slot * 8 + 8].copy_from_slice(&val.to_le_bytes());
             }

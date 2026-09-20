@@ -23,6 +23,12 @@ impl ObjcMethlistSection {
     }
 }
 
+impl Default for ObjcMethlistSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let addr_of = |r: ObjcRef| -> u64 {
         match r {

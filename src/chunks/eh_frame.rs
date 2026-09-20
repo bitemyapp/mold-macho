@@ -18,6 +18,12 @@ impl EhFrameSection {
     }
 }
 
+impl Default for EhFrameSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Writes the re-synthesized __eh_frame section: live CIEs with their
 /// personality cells rewritten to be GOT-relative, then live FDEs with
 /// their CIE pointer, function pointer and LSDA pointer re-targeted.
@@ -31,7 +37,7 @@ pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
             continue;
         }
         let off = base_off + cie.output_offset as usize;
-        buf[off..off + cie.data.len()].copy_from_slice(&cie.data);
+        buf[off..off + cie.data.len()].copy_from_slice(cie.data);
 
         if let Some(personality) = cie.personality {
             let cell_addr = base_addr + cie.output_offset as u64 + cie.personality_offset as u64;
@@ -44,7 +50,7 @@ pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     for fde in &ctx.fdes {
         let off = base_off + fde.output_offset as usize;
         let fde_addr = base_addr + fde.output_offset as u64;
-        buf[off..off + fde.data.len()].copy_from_slice(&fde.data);
+        buf[off..off + fde.data.len()].copy_from_slice(fde.data);
 
         // The CIE pointer is the distance back to the owning CIE.
         let cie_ptr = fde.output_offset + 4 - ctx.cies[fde.cie as usize].output_offset;

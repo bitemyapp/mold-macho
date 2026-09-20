@@ -79,7 +79,7 @@ pub fn run(cases: &Path, linker: &Path) -> ExitCode {
 
     let archs = test_archs();
     for path in entries {
-        if path.extension().map_or(true, |e| e != "sh") {
+        if path.extension().is_none_or(|e| e != "sh") {
             continue;
         }
         let name = path.file_stem().unwrap().to_string_lossy().into_owned();

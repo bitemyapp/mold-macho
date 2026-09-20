@@ -21,6 +21,12 @@ impl ExportTrieSection {
     }
 }
 
+impl Default for ExportTrieSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let data = &ctx.export_trie.contents;
     buf[..data.len()].copy_from_slice(data);
@@ -200,7 +206,7 @@ pub fn encode_export_trie<E: Target>(ctx: &Context<E>, sorted_globals: &[SymbolI
     // '_', so the root has one child).
     const FANOUT: usize = 8;
     fn count(node: &mut TrieNode) -> u32 {
-        node.children.sort_by(|a, b| a.0.cmp(&b.0));
+        node.children.sort_by(|a, b| a.0.cmp(b.0));
         let below: u32 = if node.children.len() >= FANOUT {
             node.children.par_iter_mut().map(|(_, c)| count(c)).sum()
         } else {
@@ -367,7 +373,7 @@ pub fn encode_export_trie<E: Target>(ctx: &Context<E>, sorted_globals: &[SymbolI
             debug_assert_eq!(p, end - start);
         });
     }
-    while buf.len() % 8 != 0 {
+    while !buf.len().is_multiple_of(8) {
         buf.push(0);
     }
     buf

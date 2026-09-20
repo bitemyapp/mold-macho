@@ -23,6 +23,12 @@ impl DataInCodeSection {
     }
 }
 
+impl Default for DataInCodeSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let mut p = 0;
     for &(off, len, kind) in &ctx.data_in_code.entries {
@@ -54,7 +60,7 @@ pub fn build<E: Target>(ctx: &Context<E>) -> Vec<(u32, u16, u16)> {
             else {
                 continue;
             };
-            let isec = &ctx.isecs[ctx.resolve_isec(isec as usize)];
+            let isec = &ctx.isecs[ctx.resolve_isec(isec)];
             if isec.is_alive() {
                 let fileoff = ctx.chunk_header(isec.output_section().unwrap()).fileoff
                     + isec.offset as u64

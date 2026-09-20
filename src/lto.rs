@@ -55,6 +55,25 @@ impl Plugin {
     }
 }
 
+/// Resolves one libLTO entry point as the function pointer type the
+/// caller expects.
+///
+/// # Safety
+///
+/// `handle` must be a live dlopen handle and `T` the C signature of the
+/// named function.
+unsafe fn dlsym<T>(handle: *mut c_void, name: &CStr) -> T {
+    // SAFETY: dlsym with a valid handle and a NUL-terminated name.
+    let sym = unsafe { libc::dlsym(handle, name.as_ptr()) };
+    if sym.is_null() {
+        fatal!("libLTO does not provide {}", name.to_string_lossy());
+    }
+    assert_eq!(size_of::<T>(), size_of::<*mut c_void>());
+    // SAFETY: T is a function pointer type of the same size as the
+    // symbol address, per the caller's contract.
+    unsafe { std::mem::transmute_copy::<*mut c_void, T>(&sym) }
+}
+
 /// Loads libLTO from the given path (from -lto_library, with a plain
 /// "libLTO.dylib" fallback that relies on dyld's search).
 pub fn load_plugin(path: Option<&str>) -> Plugin {
@@ -69,28 +88,24 @@ pub fn load_plugin(path: Option<&str>) -> Plugin {
             );
         }
 
-        macro_rules! dlsym {
-            ($name:literal) => {{
-                let sym = libc::dlsym(handle, concat!($name, "\0").as_ptr().cast());
-                if sym.is_null() {
-                    fatal!("libLTO does not provide {}", $name);
-                }
-                std::mem::transmute(sym)
-            }};
-        }
-
         Plugin {
-            get_error_message: dlsym!("lto_get_error_message"),
-            module_create_from_memory_with_path: dlsym!("lto_module_create_from_memory_with_path"),
-            module_dispose: dlsym!("lto_module_dispose"),
-            module_get_num_symbols: dlsym!("lto_module_get_num_symbols"),
-            module_get_symbol_name: dlsym!("lto_module_get_symbol_name"),
-            module_get_symbol_attribute: dlsym!("lto_module_get_symbol_attribute"),
-            codegen_create: dlsym!("lto_codegen_create"),
-            codegen_add_module: dlsym!("lto_codegen_add_module"),
-            codegen_set_pic_model: dlsym!("lto_codegen_set_pic_model"),
-            codegen_add_must_preserve_symbol: dlsym!("lto_codegen_add_must_preserve_symbol"),
-            codegen_compile: dlsym!("lto_codegen_compile"),
+            get_error_message: dlsym(handle, c"lto_get_error_message"),
+            module_create_from_memory_with_path: dlsym(
+                handle,
+                c"lto_module_create_from_memory_with_path",
+            ),
+            module_dispose: dlsym(handle, c"lto_module_dispose"),
+            module_get_num_symbols: dlsym(handle, c"lto_module_get_num_symbols"),
+            module_get_symbol_name: dlsym(handle, c"lto_module_get_symbol_name"),
+            module_get_symbol_attribute: dlsym(handle, c"lto_module_get_symbol_attribute"),
+            codegen_create: dlsym(handle, c"lto_codegen_create"),
+            codegen_add_module: dlsym(handle, c"lto_codegen_add_module"),
+            codegen_set_pic_model: dlsym(handle, c"lto_codegen_set_pic_model"),
+            codegen_add_must_preserve_symbol: dlsym(
+                handle,
+                c"lto_codegen_add_must_preserve_symbol",
+            ),
+            codegen_compile: dlsym(handle, c"lto_codegen_compile"),
         }
     }
 }

@@ -226,6 +226,12 @@ impl OutputMachHeader {
     }
 }
 
+impl Default for OutputMachHeader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A segment of the output file, grouping chunks.
 #[derive(Debug, Default)]
 pub struct OutputSegment {
@@ -304,7 +310,7 @@ fn to_vec(record: &impl FileRecord) -> Vec<u8> {
 fn append_string(buf: &mut Vec<u8>, s: &str) {
     buf.extend_from_slice(s.as_bytes());
     buf.push(0);
-    while buf.len() % 8 != 0 {
+    while !buf.len().is_multiple_of(8) {
         buf.push(0);
     }
 }

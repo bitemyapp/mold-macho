@@ -30,6 +30,12 @@ impl StubHelperSection {
     }
 }
 
+impl Default for StubHelperSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     E::write_stub_helper(ctx, ctx.stub_helper.hdr.addr, buf);
 }

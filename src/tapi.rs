@@ -570,6 +570,18 @@ fn yaml_documents(text: &'static str) -> Vec<Vec<YamlField>> {
     docs
 }
 
+// Apple's macOS SDK describes many system libraries only as arm64e.
+// Use that ABI-compatible slice for arm64 only when no arm64 slice exists.
+fn select_arch<'a>(arch: &'a str, available: impl Iterator<Item = &'a str>) -> &'a str {
+    let mut exact = false;
+    let mut arm64e = false;
+    for name in available {
+        exact |= name == arch;
+        arm64e |= name == "arm64e";
+    }
+    if arch == "arm64" && !exact && arm64e { "arm64e" } else { arch }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -685,16 +697,4 @@ exports:
         assert!(x86.tlv_exports.is_empty());
         assert_eq!(x86.external_reexports, ["/x86"]);
     }
-}
-
-// Apple's macOS SDK describes many system libraries only as arm64e.
-// Use that ABI-compatible slice for arm64 only when no arm64 slice exists.
-fn select_arch<'a>(arch: &'a str, available: impl Iterator<Item = &'a str>) -> &'a str {
-    let mut exact = false;
-    let mut arm64e = false;
-    for name in available {
-        exact |= name == arch;
-        arm64e |= name == "arm64e";
-    }
-    if arch == "arm64" && !exact && arm64e { "arm64e" } else { arch }
 }

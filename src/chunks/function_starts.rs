@@ -22,6 +22,12 @@ impl FunctionStartsSection {
     }
 }
 
+impl Default for FunctionStartsSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let data = &ctx.function_starts.contents;
     buf[..data.len()].copy_from_slice(data);

@@ -25,6 +25,12 @@ impl UnwindInfoSection {
     }
 }
 
+impl Default for UnwindInfoSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let sec = &ctx.unwind_info;
     debug_assert_eq!(sec.contents.len() as u64, sec.hdr.size);

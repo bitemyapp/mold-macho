@@ -29,6 +29,12 @@ impl GotSection {
     }
 }
 
+impl Default for GotSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     // Slots for imported symbols stay zero; dyld fills them via
     // the bind stream.

@@ -25,6 +25,12 @@ impl InitOffsetsSection {
     }
 }
 
+impl Default for InitOffsetsSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     for (i, &(isec, off)) in ctx.init_offsets.init_funcs.iter().enumerate() {
         let val = (ctx.isec_addr(isec) + off - ctx.args.pagezero_size) as u32;

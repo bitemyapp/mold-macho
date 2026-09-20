@@ -19,6 +19,12 @@ impl CodeSignatureSection {
     }
 }
 
+impl Default for CodeSignatureSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Returns the size of the code signature given the file offset it will
 /// be placed at.
 pub fn size(output: &str, fileoff: u64) -> u64 {
@@ -63,10 +69,10 @@ pub fn rehash_pages(data: &[u8], hashes: &mut [[u8; SHA256_SIZE]], range: std::o
     let page = CS_PAGE_SIZE as usize;
     let first = range.start / page;
     let last = range.end.div_ceil(page).min(hashes.len());
-    for i in first..last {
-        let start = i * page;
+    for (i, hash) in hashes[first..last].iter_mut().enumerate() {
+        let start = (first + i) * page;
         let end = (start + page).min(data.len());
-        crate::util::sha256(&data[start..end], &mut hashes[i]);
+        crate::util::sha256(&data[start..end], hash);
     }
 }
 

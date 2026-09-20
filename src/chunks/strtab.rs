@@ -13,3 +13,9 @@ impl StrtabSection {
         Self { hdr: ChunkHeader::linkedit() }
     }
 }
+
+impl Default for StrtabSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}

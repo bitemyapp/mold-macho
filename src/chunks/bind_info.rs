@@ -22,6 +22,12 @@ impl BindInfoSection {
     }
 }
 
+impl Default for BindInfoSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let data = &ctx.bind_info.contents;
     buf[..data.len()].copy_from_slice(data);

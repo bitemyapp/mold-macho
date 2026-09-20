@@ -22,6 +22,12 @@ impl ObjcImageInfoSection {
     }
 }
 
+impl Default for ObjcImageInfoSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     buf[..4].copy_from_slice(&0u32.to_le_bytes());
     buf[4..8].copy_from_slice(&ctx.objc_imageinfo.flags.to_le_bytes());

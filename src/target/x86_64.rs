@@ -111,11 +111,12 @@ impl Target for X86_64 {
         write32(&mut buf[11..], binder.wrapping_sub(addr + 15) as u32);
         buf[15] = 0x90;
         // Each entry: push $offset; jmp header.
-        for i in 0..ctx.stubs.symbols.len() {
+        let lazy_offsets = &ctx.lazy_bind_info.offsets[..ctx.stubs.symbols.len()];
+        for (i, &lazy_off) in lazy_offsets.iter().enumerate() {
             let off = 16 + i * 10;
             let ent_addr = addr + off as u64;
             buf[off] = 0x68;
-            write32(&mut buf[off + 1..], ctx.lazy_bind_info.offsets[i]);
+            write32(&mut buf[off + 1..], lazy_off);
             buf[off + 5] = 0xe9;
             write32(&mut buf[off + 6..], addr.wrapping_sub(ent_addr + 10) as u32);
         }
@@ -169,7 +170,7 @@ impl Target for X86_64 {
             let is_subtracted = i > 0 && rels[i - 1].r_type() == X86_64_RELOC_SUBTRACTOR;
 
             let (target, addend) = if r.is_extern() {
-                (RelocTarget::Sym(r.r_symbolnum() as u32), addend)
+                (RelocTarget::Sym(r.r_symbolnum()), addend)
             } else {
                 let addr = if r.is_pcrel() {
                     (hdr.addr + r.r_address as u64 + 4).wrapping_add_signed(addend)

@@ -185,7 +185,6 @@ pub fn dead_strip<E: Target>(ctx: &mut Context<E>) {
             gc: &'s Gc<'s, E>,
             id: usize,
             depth: usize,
-            scope: &rayon::Scope<'s>,
             next: &mut Vec<usize>,
         ) {
             let mut targets = Vec::new();
@@ -225,7 +224,7 @@ pub fn dead_strip<E: Target>(ctx: &mut Context<E>) {
                 let t = gc.redirects[t];
                 if gc.ctx.isecs[t].mark_visited() {
                     if depth < 3 {
-                        visit_section(gc, t, depth + 1, scope, next);
+                        visit_section(gc, t, depth + 1, next);
                     } else {
                         next.push(t);
                     }
@@ -239,7 +238,7 @@ pub fn dead_strip<E: Target>(ctx: &mut Context<E>) {
         ) {
             let mut next = Vec::with_capacity(GC_BATCH);
             for id in batch {
-                visit_section(gc, id, 0, scope, &mut next);
+                visit_section(gc, id, 0, &mut next);
                 if next.len() >= GC_BATCH {
                     let found = std::mem::replace(&mut next, Vec::with_capacity(GC_BATCH));
                     scope.spawn(move |scope| visit_batch(gc, found, scope));

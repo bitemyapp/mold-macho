@@ -157,7 +157,7 @@ pub fn find_subsec(
         return None;
     }
     let id = subsecs[i - 1] as usize;
-    let isec = &isecs[id as usize];
+    let isec = &isecs[id];
     if addr < isec.input_addr as u64 + isec.size as u64
         || (isec.size as u64 == 0 && addr == isec.input_addr as u64)
     {
@@ -279,7 +279,7 @@ pub struct StagedObject {
 fn nlists_slice(data: &'static [u8], off: usize, n: usize) -> Option<&'static [NList]> {
     let bytes = n.checked_mul(size_of::<NList>())?;
     if off.checked_add(bytes)? > data.len()
-        || (data.as_ptr() as usize + off) % std::mem::align_of::<NList>() != 0
+        || !(data.as_ptr() as usize + off).is_multiple_of(std::mem::align_of::<NList>())
     {
         return None;
     }
@@ -623,7 +623,7 @@ pub fn stage_object<E: Target>(
                         return None;
                     }
                     let &last = by_ordinal[sect_pos as usize].last()?;
-                    Some((last as usize, isecs[last as usize].size as u64))
+                    Some((last, isecs[last].size as u64))
                 });
                 let Some((tsub, toff)) = found else {
                     fatal!("{}: relocation against a discarded section", mf.name);
@@ -636,7 +636,7 @@ pub fn stage_object<E: Target>(
         let mut pos = 0;
         for &sub in &by_ordinal[i] {
             let sub_off = (isecs[sub].input_addr as u64 - sect.addr) as u32;
-            let end = sub_off + isecs[sub].size as u32;
+            let end = sub_off + isecs[sub].size;
             let start = obj_relocs.len();
             while pos < rels.len() && rels[pos].offset < end {
                 let mut rel = rels[pos];
@@ -662,7 +662,7 @@ pub fn stage_object<E: Target>(
     if let Some(hdr) =
         sect_hdrs.iter().find(|s| s.segname() == "__LD" && s.sectname() == "__compact_unwind")
     {
-        parse_compact_unwind::<E>(hdr, &isecs, &subsecs, &nlists, data, &mf.name, &mut unwind);
+        parse_compact_unwind(hdr, &isecs, &subsecs, &nlists, data, &mf.name, &mut unwind);
     }
 
     if let Some(hdr) =
@@ -859,7 +859,7 @@ pub fn integrate_objects<E: Target>(
                     rec.fde_idx += base.fde as u32;
                 }
                 if rec.personality_sym != UNWIND_NONE {
-                    rec.personality_sym = syms[rec.personality_sym as usize] as u32;
+                    rec.personality_sym = syms[rec.personality_sym as usize];
                 }
             }
             for cie in &mut st.cies {
@@ -927,13 +927,11 @@ pub fn integrate_objects<E: Target>(
         let ptr = RawPtr(dst.as_mut_ptr());
         let ptr = &ptr;
         parts.into_par_iter().for_each(|(base, items)| {
-            let mut p = base;
-            for item in items {
+            for (p, item) in (base..).zip(items) {
                 // SAFETY: the ranges are disjoint across parts and lie
                 // within the reserved capacity; every slot is written
                 // exactly once.
                 unsafe { ptr.0.add(p).write(item) };
-                p += 1;
             }
         });
         unsafe { dst.set_len(old + add) };
@@ -1020,7 +1018,7 @@ pub fn integrate_object_with<E: Target>(
         }
         // The personality was recorded as a local symbol index.
         if rec.personality_sym != UNWIND_NONE {
-            rec.personality_sym = syms[rec.personality_sym as usize] as u32;
+            rec.personality_sym = syms[rec.personality_sym as usize];
         }
         // Extend or open the subsection's record range (grouped input).
         let isec = &mut ctx.isecs[rec.isec as usize];
@@ -1232,7 +1230,7 @@ impl UnwindRecord {
 /// section is an array of 32-byte entries whose pointer fields are set by
 /// relocations.
 #[allow(clippy::too_many_arguments)]
-fn parse_compact_unwind<E: Target>(
+fn parse_compact_unwind(
     hdr: &MachSection,
     isecs: &[InputSection],
     subsecs: &[crate::input_sections::InputSectionId],
@@ -1260,7 +1258,7 @@ fn parse_compact_unwind<E: Target>(
         }
     };
     const ENTRY_SIZE: usize = 32;
-    if hdr.size % ENTRY_SIZE as u64 != 0 {
+    if !hdr.size.is_multiple_of(ENTRY_SIZE as u64) {
         fatal!("{file_name}: invalid __compact_unwind section size");
     }
 
@@ -1628,7 +1626,7 @@ fn parse_eh_frame<E: Target>(
         let mut lsda = None;
         if out_cies[cie].lsda_size != 0 {
             let mut pos = 24;
-            read_uleb_at(&rec, &mut pos);
+            read_uleb_at(rec, &mut pos);
             let cell = i32::from_le_bytes(rec[pos..pos + 4].try_into().unwrap());
             let lsda_addr = (input_addr as u64 + pos as u64).wrapping_add_signed(cell as i64);
             let Some((lsda_isec, lsda_off)) = find_local(lsda_addr) else {
@@ -1730,7 +1728,8 @@ pub fn defined_symbol_names(mf: &MappedFile) -> Vec<&'static str> {
             let strtab: &[u8] = &data[cmd.stroff as usize..(cmd.stroff + cmd.strsize) as usize];
             // SAFETY: input files are leaked, so the string table lives
             // for the rest of the process.
-            let strtab: &'static [u8] = validate_strtab(unsafe { std::mem::transmute(strtab) });
+            let strtab: &'static [u8] =
+                validate_strtab(unsafe { std::mem::transmute::<&[u8], &'static [u8]>(strtab) });
             for nlist in &nlists {
                 if !nlist.is_stab()
                     && nlist.is_extern()
@@ -1996,7 +1995,8 @@ pub fn parse_dylib_binary<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFi
         let strtab = &data[sym.stroff as usize..(sym.stroff + sym.strsize) as usize];
         // SAFETY: input files are leaked, so the string table lives for
         // the rest of the process.
-        let strtab: &'static [u8] = validate_strtab(unsafe { std::mem::transmute(strtab) });
+        let strtab: &'static [u8] =
+            validate_strtab(unsafe { std::mem::transmute::<&[u8], &'static [u8]>(strtab) });
         // A TLV export is recognizable by its section: n_sect names a
         // S_THREAD_LOCAL_VARIABLES section (the __thread_vars
         // descriptors).
@@ -2222,7 +2222,8 @@ pub fn parse_bundle_loader<E: Target>(ctx: &mut Context<E>, mf: &'static MappedF
         let strtab = &data[sym.stroff as usize..(sym.stroff + sym.strsize) as usize];
         // SAFETY: input files are leaked, so the string table lives for
         // the rest of the process.
-        let strtab: &'static [u8] = validate_strtab(unsafe { std::mem::transmute(strtab) });
+        let strtab: &'static [u8] =
+            validate_strtab(unsafe { std::mem::transmute::<&[u8], &'static [u8]>(strtab) });
         let tlv_sects = thread_local_section_ordinals(data, &hdr);
         let range = dysym.iextdefsym as usize..(dysym.iextdefsym + dysym.nextdefsym) as usize;
         for nlist in &nlists[range] {
@@ -2311,7 +2312,8 @@ fn dylib_binary_exports(
         let strtab = &data[sym.stroff as usize..(sym.stroff + sym.strsize) as usize];
         // SAFETY: input files are leaked, so the string table lives for
         // the rest of the process.
-        let strtab: &'static [u8] = validate_strtab(unsafe { std::mem::transmute(strtab) });
+        let strtab: &'static [u8] =
+            validate_strtab(unsafe { std::mem::transmute::<&[u8], &'static [u8]>(strtab) });
         let tlv_sects = thread_local_section_ordinals(data, &hdr);
         let range = dysym.iextdefsym as usize..(dysym.iextdefsym + dysym.nextdefsym) as usize;
         for nlist in &nlists[range] {

@@ -563,12 +563,6 @@ pub fn claim_new_dylibs<E: Target>(ctx: &mut Context<E>, first: usize) {
     });
 }
 
-/// Resolves all symbols, following mold's model: every input including
-/// each archive member has been parsed already, and resolution ranks
-/// competing definitions (strong > weak > lazy archive member or dylib
-/// > common), breaking ties by input order. A liveness walk then marks
-/// the archive members whose definitions are actually referenced, and
-/// a second round restricted to live files settles the final owners.
 /// Adds the object that owns what the linker synthesizes: the
 /// sections standing for merged Objective-C records, folded class
 /// references or tentative definitions, and symbols such as
@@ -581,6 +575,12 @@ pub fn create_internal_file<E: Target>(ctx: &mut Context<E>) {
     ctx.objs.push(input_files::ObjectFile::internal());
 }
 
+/// Resolves all symbols, following mold's model: every input including
+/// each archive member has been parsed already, and resolution ranks
+/// competing definitions (strong > weak > lazy archive member or
+/// dylib > common), breaking ties by input order. A liveness walk then marks
+/// the archive members whose definitions are actually referenced, and
+/// a second round restricted to live files settles the final owners.
 pub fn resolve_symbols<E: Target>(ctx: &mut Context<E>) {
     clear_claims(ctx);
     do_resolve(ctx, false);
@@ -1084,7 +1084,7 @@ pub fn convert_common_symbols<E: Target>(ctx: &mut Context<E>) {
         ctx.isecs.push(InputSection {
             file,
             shndx,
-            p2align: p2align as u8,
+            p2align,
             input_addr: 0,
             size: size as u32,
             contents: 0,
@@ -1295,7 +1295,7 @@ pub fn merge_literals<E: Target>(ctx: &mut Context<E>) {
     for fold in folds {
         for (loser, winner) in fold {
             let p2align = ctx.isecs[loser as usize].p2align;
-            ctx.isecs[loser as usize].replacement = winner as u32;
+            ctx.isecs[loser as usize].replacement = winner;
             let w = &mut ctx.isecs[winner as usize];
             w.p2align = w.p2align.max(p2align);
         }
@@ -1582,8 +1582,8 @@ pub fn hide_all_exports<E: Target>(ctx: &mut Context<E>) {
 /// sit at the same offset in both, and the subsections must be the
 /// same size, or differ only by trailing zero padding (Swift's
 /// __swift5_typeref strings come with or without a pad byte from
-/// one object to the next, and ld64 discards the losers regardless)
-/// - C++ guarantees identical weak instantiations, but any other
+/// one object to the next, and ld64 discards the losers regardless):
+/// C++ guarantees identical weak instantiations, but any other
 /// mismatch means something odd, and keeping the copy is safe.
 pub fn coalesce_weak_defs<E: Target>(ctx: &mut Context<E>) {
     // A C++ debug link has millions of weak-def nlists (every inline
@@ -2606,6 +2606,10 @@ pub fn convert_objc_method_lists<E: Target>(ctx: &mut Context<E>) {
     }
 }
 
+/// Appends a synthesized data record for an Objective-C rewrite and
+/// returns its subsection; see merge_objc_categories.
+pub type NewBlob<E> = dyn FnMut(&mut Context<E>, &'static str, Vec<DataField>) -> u32;
+
 /// A field of a synthesized Objective-C data record.
 #[derive(Clone, Debug)]
 pub enum DataField {
@@ -3203,11 +3207,7 @@ pub fn merge_objc_categories<E: Target>(ctx: &mut Context<E>) {
                           methods: Option<u32>,
                           protocols: Option<u32>,
                           props: Option<u32>,
-                          new_blob: &mut dyn FnMut(
-            &mut Context<E>,
-            &'static str,
-            Vec<DataField>,
-        ) -> u32| {
+                          new_blob: &mut NewBlob<E>| {
             let data = ctx.isecs[ro.0 as usize].data()[ro.1 as usize..ro.1 as usize + 16].to_vec();
             let flags = u32::from_le_bytes(data[0..4].try_into().unwrap());
             let has_swift_initializer = flags & (1 << 6) != 0;
@@ -4499,7 +4499,7 @@ pub fn plan_object_stabs<E: Target>(
             continue;
         }
         let Some(isec) = sym.input_section().map(|i| i as usize) else { continue };
-        let isec_id = ctx.resolve_isec(isec as usize);
+        let isec_id = ctx.resolve_isec(isec);
         let isec = &ctx.isecs[isec_id];
         if !isec.is_alive() {
             continue;
@@ -4832,7 +4832,7 @@ pub fn create_output_symtab<E: Target>(
             n_desc |= N_WEAK_DEF;
         }
         let ent = NList { n_strx, n_type, n_sect, n_desc, n_value: 0 };
-        data.entries.push((ent, Some(i as u32)));
+        data.entries.push((ent, Some(i)));
     }
     data.nextdef = data.entries.len() as u32 - data.nlocal;
 
@@ -5343,7 +5343,7 @@ fn order_file_ranks<E: Target>(ctx: &Context<E>) -> Option<Vec<u64>> {
                 None => true,
             };
             if applies {
-                let isec = ctx.resolve_isec(isec as usize);
+                let isec = ctx.resolve_isec(isec);
                 ranks[isec] = ranks[isec].min(*r);
             }
         }

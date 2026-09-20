@@ -25,6 +25,12 @@ impl LazyBindInfoSection {
     }
 }
 
+impl Default for LazyBindInfoSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let data = &ctx.lazy_bind_info.contents;
     buf[..data.len()].copy_from_slice(data);

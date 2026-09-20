@@ -20,6 +20,12 @@ impl IndirectSymtabSection {
     }
 }
 
+impl Default for IndirectSymtabSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let mut off = 0;
     let lazy: &[SymbolId] = if ctx.lazy_binding() { &ctx.stubs.symbols } else { &[] };

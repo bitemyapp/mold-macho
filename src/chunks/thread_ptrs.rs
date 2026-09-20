@@ -25,6 +25,12 @@ impl ThreadPtrsSection {
     }
 }
 
+impl Default for ThreadPtrsSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     for (i, &id) in ctx.thread_ptrs.symbols.iter().enumerate() {
         if !ctx.symbols[id].is_imported() {

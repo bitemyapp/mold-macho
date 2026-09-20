@@ -48,6 +48,12 @@ impl SymtabSection {
     }
 }
 
+impl Default for SymtabSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_symtab<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     use rayon::prelude::*;
     let off = ctx.symtab.hdr.fileoff as usize;

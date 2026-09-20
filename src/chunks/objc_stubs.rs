@@ -62,6 +62,12 @@ impl ObjcStubsSection {
     }
 }
 
+impl Default for ObjcStubsSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     E::write_objc_stubs(ctx, ctx.objc_stubs.hdr.addr, buf);
 }
