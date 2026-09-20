@@ -61,11 +61,13 @@ behavior involved in that change.
 Tests are shell scripts under `tests/`, one feature per script,
 driving the real toolchain through `cc --ld-path=...`; a harness runs
 each for arm64 and (under Rosetta) x86-64, writing logs and outputs
-under `target/<profile>/mold-test/out/test`:
+under `target/<profile>/mold-test/out/test`. The harness is the
+`integration` test of the `cli` crate; name that target to pass it
+options, which the unit tests would otherwise reject:
 
     cargo test
-    cargo test -- dead-strip --native --timeout 120
-    cargo test -- --list
+    cargo test --test integration -- dead-strip --native --timeout 120
+    cargo test --test integration -- --list
 
 ## License
 
