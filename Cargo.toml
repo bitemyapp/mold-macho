@@ -12,7 +12,6 @@ name = "mold_macho"
 # crate of its own under targets/, and the executable in cli/ dispatches to
 # them, mirroring mold's ELF port.
 [profile.release]
-debug = 1
 panic = "abort"
 
 [workspace]
