@@ -46,4 +46,4 @@ dyld_info -fixups $t/exe2 | grep '__objc_selrefs' | awk '{print $NF}' > $t/selta
 [ "$(wc -l < $t/seltargets)" = "$(sort -u $t/seltargets | wc -l)" ]
 # "shared", "only1" and "only2" once each (main.o's copies of the
 # latter two fold as well): three constants.
-otool -l $t/exe2 | grep -A3 'sectname __cfstring' | grep -q 'size 0x0000000000000060'
+otool -l $t/exe2 | grep -A3 'sectname __cfstring' | grep 'size 0x0000000000000060'

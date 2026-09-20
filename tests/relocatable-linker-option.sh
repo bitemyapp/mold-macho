@@ -29,7 +29,7 @@ grep -q 'ignoring unexpected dylib' $t/log
 
 # The zlib reference stays undefined, and each distinct option appears
 # once.
-nm -m $t/r.o | grep -q 'undefined.*_zlibVersion'
+nm -m $t/r.o | grep 'undefined.*_zlibVersion'
 otool -l $t/r.o > $t/lc
 [ "$(grep -c LC_LINKER_OPTION $t/lc)" = 2 ]
 grep -q -- '-lz' $t/lc
@@ -37,4 +37,4 @@ grep -q Foundation $t/lc
 
 # The final link auto-links libz from the carried option.
 $CC --ld-path=$mold -o $t/exe $t/main.o $t/r.o
-$t/exe | grep -q '^1\.'
+$t/exe | grep '^1\.'

@@ -15,7 +15,7 @@ struct S { virtual ~S(); virtual int g(); };
 __attribute__((noinline)) int after(int x) { return x + 1; }
 int main() { S s; return s.g() + after(0) - 3; }
 EOF2
-nm -m $t/a.o | grep -q 'cold func'
+nm -m $t/a.o | grep 'cold func'
 
 $CXX --ld-path=$mold -o $t/exe $t/a.o $t/b.o
 $t/exe

@@ -65,4 +65,4 @@ _w2: ret
 .subsections_via_symbols
 EOF2
 $mold -r -arch $ARCH -o $t/w.o $t/w1.o $t/w2.o
-otool -l $t/w.o | grep -A3 'sectname __swift5_typeref' | grep -q 'size 0x0000000000000013'
+otool -l $t/w.o | grep -A3 'sectname __swift5_typeref' | grep 'size 0x0000000000000013'

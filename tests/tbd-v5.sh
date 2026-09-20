@@ -55,7 +55,7 @@ EOF
 # present, which is only a warning.
 $CC --ld-path=$mold -o $t/exe $t/a.o -F$t/libs -framework Some -framework Foundation \
   -Wl,-w
-otool -L $t/exe | grep -q 'Some.framework/Versions/A/Some (compatibility version 1.0.0, current version 2.1.0)'
+otool -L $t/exe | grep 'Some.framework/Versions/A/Some (compatibility version 1.0.0, current version 2.1.0)'
 nm -m $t/exe > $t/nm
 grep -q 'undefined.*_some_func (from Some)' $t/nm
 grep -q 'undefined.*_inner_func (from Some)' $t/nm

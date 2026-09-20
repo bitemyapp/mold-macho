@@ -73,7 +73,7 @@ grep -q '^load$' $t/out
 # m resolves to the category's override; 11 methods, 3 protocols.
 grep -q '^11 12 13 21 20 1 2 3 7 11 3$' $t/out
 otool -l $t/exe > $t/lc
-grep -A1 'sectname __objc_catlist' $t/lc | grep -q segname   # NSObject (Ext) stays
+grep -A1 'sectname __objc_catlist' $t/lc | grep segname   # NSObject (Ext) stays
 otool -s __DATA_CONST __objc_catlist $t/exe | tail -n +3 > $t/catlist
 [ "$(wc -l < $t/catlist | tr -d ' ')" = 1 ]
 grep -q 'sectname __objc_nlclslist' $t/lc

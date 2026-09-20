@@ -52,9 +52,9 @@ int main() {
 EOF2
 
 $CC --ld-path=$mold -o $t/exe $t/a.o -framework Foundation -mmacosx-version-min=15.0
-$t/exe | grep -q '^1 2 4 3 5 6 7$'
+$t/exe | grep '^1 2 4 3 5 6 7$'
 otool -l $t/exe > $t/lc
-grep -A1 'sectname __objc_methlist' $t/lc | grep -q 'segname __TEXT'
+grep -A1 'sectname __objc_methlist' $t/lc | grep 'segname __TEXT'
 otool -ov $t/exe > $t/ov
 # Every list is relative: none left in the classic 24-byte form.
 [ "$(grep -c 'entsize 12 (relative)' $t/ov)" -ge 8 ]
@@ -74,13 +74,13 @@ not grep -q '__objc_methlist' $t/fixups
 # only x86-64 can be built for 10.15).
 if [ $ARCH = x86_64 ]; then
   $CC --ld-path=$mold -o $t/exe15 $t/a.o -framework Foundation -mmacosx-version-min=10.15
-  $t/exe15 | grep -q '^1 2 4 3 5 6 7$'
+  $t/exe15 | grep '^1 2 4 3 5 6 7$'
   otool -l $t/exe15 > $t/lc15
   not grep -q '__objc_methlist' $t/lc15
-  otool -ov $t/exe15 | grep -q 'entsize 24'
+  otool -ov $t/exe15 | grep 'entsize 24'
 fi
 
 $CC --ld-path=$mold -o $t/exe_no $t/a.o -framework Foundation -Wl,-no_objc_relative_method_lists
-$t/exe_no | grep -q '^1 2 4 3 5 6 7$'
+$t/exe_no | grep '^1 2 4 3 5 6 7$'
 otool -l $t/exe_no > $t/lcno
 not grep -q '__objc_methlist' $t/lcno

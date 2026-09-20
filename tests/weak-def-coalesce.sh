@@ -26,12 +26,12 @@ int main() { printf("%d %d %d\n", a_next(), b_next(), a_next()); }
 EOF2
 $CC --ld-path=$mold -o $t/exe $t/main.o $t/liba.dylib $t/libb.dylib -Wl,-rpath,$t
 # One counter across both dylibs.
-$t/exe | grep -q '^1 2 3$'
+$t/exe | grep '^1 2 3$'
 
 # The static local's slot is bound by weak lookup; the header says so.
 dyld_info -fixups $t/liba.dylib > $t/fixups
 grep -q 'bind *<weak-def-coalesce>/__ZZ7next_idvE7counter' $t/fixups
-otool -hv $t/liba.dylib | grep -q 'WEAK_DEFINES.*BINDS_TO_WEAK'
+otool -hv $t/liba.dylib | grep 'WEAK_DEFINES.*BINDS_TO_WEAK'
 
 # A call to an exported weak function goes through a stub and a
 # GOT slot bound the same way; a data pointer to it is bound too.
@@ -43,14 +43,14 @@ EOF2
 $CXX --ld-path=$mold -dynamiclib -o $t/libw.dylib $t/w.o
 dyld_info -fixups $t/libw.dylib > $t/wfixups
 [ "$(grep -c 'bind *<weak-def-coalesce>/__Z2wkIiEiT_' $t/wfixups)" = 2 ]
-otool -Iv $t/libw.dylib | awk '/__stubs/{f=1;next} /Indirect/{f=0} f&&NF>=3{print $NF}' | grep -q '^__Z2wkIiEiT_$'
+otool -Iv $t/libw.dylib | awk '/__stubs/{f=1;next} /Indirect/{f=0} f&&NF>=3{print $NF}' | grep '^__Z2wkIiEiT_$'
 
 # Classic dyld info (-undefined dynamic_lookup selects it): the slots
 # are rebased to this image's copy and listed in the weak_bind stream.
 for lib in a b; do
 $CXX --ld-path=$mold -dynamiclib -o $t/lib${lib}c.dylib $t/$lib.o -install_name @rpath/lib${lib}c.dylib -Wl,-undefined,dynamic_lookup
 done
-otool -l $t/libac.dylib | grep -q 'LC_DYLD_INFO'
-otool -l $t/libac.dylib | grep -A11 'LC_DYLD_INFO' | grep 'weak_bind_size' | grep -qv ' 0$'
+otool -l $t/libac.dylib | grep 'LC_DYLD_INFO'
+otool -l $t/libac.dylib | grep -A11 'LC_DYLD_INFO' | grep 'weak_bind_size' | grep -v ' 0$'
 $CC --ld-path=$mold -o $t/exec $t/main.o $t/libac.dylib $t/libbc.dylib -Wl,-rpath,$t
-$t/exec | grep -q '^1 2 3$'
+$t/exec | grep '^1 2 3$'

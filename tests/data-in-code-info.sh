@@ -6,10 +6,10 @@ int main() {}
 EOF
 
 $CC --ld-path=$mold -o $t/exe1 $t/a.o -Wl
-otool -l $t/exe1 | grep -q DATA_IN_CODE
+otool -l $t/exe1 | grep DATA_IN_CODE
 
 $CC --ld-path=$mold -o $t/exe2 $t/a.o -Wl,-data_in_code_info
-otool -l $t/exe2 | grep -q DATA_IN_CODE
+otool -l $t/exe2 | grep DATA_IN_CODE
 
 $CC --ld-path=$mold -o $t/exe3 $t/a.o -Wl,-no_data_in_code_info
 otool -l $t/exe3 > $t/log3

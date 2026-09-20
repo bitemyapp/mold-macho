@@ -21,7 +21,7 @@ int main() {
 EOF
 
 $CC --ld-path=$mold -o $t/exe1 $t/b.a $t/c.o
-$t/exe1 | grep -q '^foo=42$'
+$t/exe1 | grep '^foo=42$'
 
 cat <<EOF | $CC -c -o $t/d.o -xc -
 #include <stdio.h>
@@ -36,4 +36,4 @@ int main() {
 EOF
 
 $CC --ld-path=$mold -o $t/exe2 $t/b.a $t/d.o
-$t/exe2 | grep -q '^foo=3 bar=5$'
+$t/exe2 | grep '^foo=3 bar=5$'

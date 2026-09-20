@@ -57,4 +57,4 @@ sed -n '/<_get_val>:/,/ret/p' $t/dis > $t/f2
 $CC --ld-path=$mold -o $t/exe2 $t/a.o -Wl,-ignore_optimization_hints
 $t/exe2
 objdump -d $t/exe2 > $t/dis2
-sed -n '/<_get_addr>:/,/ret/p' $t/dis2 | grep -q adrp
+sed -n '/<_get_addr>:/,/ret/p' $t/dis2 | grep adrp

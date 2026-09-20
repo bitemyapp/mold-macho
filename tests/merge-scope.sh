@@ -22,4 +22,4 @@ int main() {}
 EOF
 
 $CC --ld-path=$mold -o $t/exe $t/a.o $t/b.o $t/c.o
-objdump --macho --exports-trie $t/exe | grep -q _foo
+objdump --macho --exports-trie $t/exe | grep _foo

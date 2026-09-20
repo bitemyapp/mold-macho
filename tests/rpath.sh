@@ -15,5 +15,5 @@ int main() { printf("%d\n", three()); }
 EOF2
 
 $CC --ld-path=$mold -o $t/exe $t/b.o -L$t -lfoo -Wl,-rpath,$PWD/$t
-otool -l $t/exe | grep -A2 LC_RPATH | grep -q path
+otool -l $t/exe | grep -A2 LC_RPATH | grep path
 $t/exe | grep '^3$'

@@ -7,7 +7,7 @@ int main() { printf("hi\n"); }
 EOF2
 
 $CC --ld-path=$mold -o $t/exe1 $t/a.o -framework CoreFoundation
-otool -L $t/exe1 | grep -q CoreFoundation
+otool -L $t/exe1 | grep CoreFoundation
 
 $CC --ld-path=$mold -o $t/exe2 $t/a.o -framework CoreFoundation \
   -Wl,-dead_strip_dylibs

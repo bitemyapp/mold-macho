@@ -24,8 +24,8 @@ cat <<EOF2 | $CC -o $t/a.o -c -xobjective-c -fno-objc-arc -
 Protocol *proto(void) { return @protocol(Greeter); }
 int main() { return 0; }
 EOF2
-nm -m $t/a.o | grep -q 'non-external l_OBJC_LABEL_CLASS_\$'
-nm -m $t/a.o | grep -q 'private external \[no dead strip\] __OBJC_LABEL_PROTOCOL_\$_Greeter'
+nm -m $t/a.o | grep 'non-external l_OBJC_LABEL_CLASS_\$'
+nm -m $t/a.o | grep 'private external \[no dead strip\] __OBJC_LABEL_PROTOCOL_\$_Greeter'
 $CC --ld-path=$mold -o $t/exe $t/a.o -framework Foundation
 nm -m $t/exe > $t/nm
 not grep -q 'OBJC_LABEL_CLASS' $t/nm
@@ -43,9 +43,9 @@ template <typename T> struct Box { T v; __attribute__((noinline)) T get() const 
 int use(Box<int> *b);
 int main() { Box<int> b = {3}; return use(&b) + b.get() - 6; }
 EOF2
-nm -m $t/b.o | grep -q 'weak external automatically hidden __ZNK3BoxIiE3getEv'
+nm -m $t/b.o | grep 'weak external automatically hidden __ZNK3BoxIiE3getEv'
 $mold -r -arch $ARCH -o $t/r.o $t/b.o $t/c.o
-nm -m $t/r.o | grep -q 'weak external automatically hidden __ZNK3BoxIiE3getEv'
+nm -m $t/r.o | grep 'weak external automatically hidden __ZNK3BoxIiE3getEv'
 $CC --ld-path=$mold -o $t/exe2 $t/r.o
 $t/exe2
-nm $t/exe2 | grep -q ' t __ZNK3BoxIiE3getEv$'
+nm $t/exe2 | grep ' t __ZNK3BoxIiE3getEv$'

@@ -15,10 +15,10 @@ grep -q 'compatibility version 2.0.0' $t/log
 # compiler driver passes it with several -arch; Transmission's CMake
 # build does too).
 $CC --ld-path=$mold -shared -o $t/libbaz.dylib $t/a.o -Wl,-final_output,/opt/lib/libbaz.dylib
-otool -D $t/libbaz.dylib | grep -q '^/opt/lib/libbaz.dylib$'
+otool -D $t/libbaz.dylib | grep '^/opt/lib/libbaz.dylib$'
 $CC --ld-path=$mold -shared -o $t/libqux.dylib $t/a.o -Wl,-final_output,/opt/lib/libqux.dylib \
   -Wl,-install_name,/explicit/libqux.dylib
-otool -D $t/libqux.dylib | grep -q '^/explicit/libqux.dylib$'
+otool -D $t/libqux.dylib | grep '^/explicit/libqux.dylib$'
 
 # The older -dylib_ spellings, which Xcode still passes.
 $CC --ld-path=$mold -shared -o $t/libbar.dylib $t/a.o \

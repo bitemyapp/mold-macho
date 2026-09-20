@@ -9,5 +9,5 @@ EOF2
 # -needed_framework survives -dead_strip_dylibs even when unused.
 $CC --ld-path=$mold -o $t/exe $t/a.o \
   -Wl,-needed_framework,CoreFoundation -Wl,-dead_strip_dylibs
-otool -L $t/exe | grep -q CoreFoundation
+otool -L $t/exe | grep CoreFoundation
 $t/exe | grep hi

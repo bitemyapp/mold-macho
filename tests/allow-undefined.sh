@@ -14,7 +14,7 @@ not $CC --ld-path=$mold -o $t/exe $t/a.o 2>/dev/null
 # still needs something (a host process, an inserted library) to
 # provide it, so only the link is checked.
 $CC --ld-path=$mold -o $t/exe $t/a.o -Wl,-U,_mystery
-nm -m $t/exe | grep -q '_mystery (dynamically looked up)'
+nm -m $t/exe | grep '_mystery (dynamically looked up)'
 
 # -undefined warning reports but links
 $CC --ld-path=$mold -o $t/exe2 $t/a.o -Wl,-undefined,warning 2> $t/log

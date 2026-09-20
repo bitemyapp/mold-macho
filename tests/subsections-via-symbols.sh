@@ -42,7 +42,7 @@ EOF
 # sold's test, whose expectation of 16 came from that rounding.)
 $CC --ld-path=$mold -o $t/exe $t/a.o $t/b.o $t/c.o
 if [ $ARCH = arm64 ]; then
-  $t/exe | grep -q '^4 1$'
+  $t/exe | grep '^4 1$'
 else
-  $t/exe | grep -q '^1 1$'   # a one-byte nop
+  $t/exe | grep '^1 1$'   # a one-byte nop
 fi

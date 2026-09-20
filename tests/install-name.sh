@@ -6,4 +6,4 @@ void foo() {}
 EOF
 
 $CC --ld-path=$mold -shared -o $t/b.dylib $t/a.o -Wl,-install_name,foobar
-otool -l $t/b.dylib | grep -q 'name foobar'
+otool -l $t/b.dylib | grep 'name foobar'

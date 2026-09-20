@@ -10,7 +10,7 @@ EOF
 $CC -o $t/a.o -c -g $t/a.c
 
 $CC --ld-path=$mold -o $t/exe1 $t/a.o -g
-nm -pa $t/exe1 | grep -qw OSO
+nm -pa $t/exe1 | grep -w OSO
 
 $CC --ld-path=$mold -o $t/exe2 $t/a.o -g -Wl,-S
 nm -pa $t/exe2 > $t/log2

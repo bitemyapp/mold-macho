@@ -17,4 +17,4 @@ $t/b.o
 EOF
 
 $CC --ld-path=$mold -o $t/exe -Wl,-filelist,$t/filelist
-$t/exe | grep -q 'Hello world'
+$t/exe | grep 'Hello world'

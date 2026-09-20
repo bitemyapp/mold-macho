@@ -125,6 +125,6 @@ $t/exe15
 # -no_data_const keeps everything in __DATA.
 $CC --ld-path=$mold -o $t/exe2 $t/a.o $t/b.o $t/c.o -framework Foundation -Wl,-no_data_const \
   -Wl,-no_objc_category_merging
-otool -l $t/exe2 | grep -q 'segname __DATA_CONST' && exit 1
-otool -l $t/exe2 | grep -A1 'sectname __cfstring' | grep -q 'segname __DATA'
+otool -l $t/exe2 | grep 'segname __DATA_CONST' && exit 1
+otool -l $t/exe2 | grep -A1 'sectname __cfstring' | grep 'segname __DATA'
 $t/exe2

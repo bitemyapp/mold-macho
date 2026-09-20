@@ -14,9 +14,9 @@ int main() {
 EOF
 
 $CC --ld-path=$mold -o $t/exe $t/a.o
-$t/exe | grep -q 'Hello world'
+$t/exe | grep 'Hello world'
 
-objdump --macho --bind $t/exe | grep -q _printf
+objdump --macho --bind $t/exe | grep _printf
 
 objdump --macho --lazy-bind $t/exe > $t/log
 ! grep -q _printf $t/log || false

@@ -17,7 +17,7 @@ $CXX --ld-path=$mold -dynamiclib -o $t/lib.dylib $t/a.o
 dyld_info -fixups $t/lib.dylib > $t/fixups
 grep -q 'bind *<weak-def-coalesce>/__Znam' $t/fixups
 grep -q 'bind *<weak-def-coalesce>/__ZdaPv' $t/fixups
-otool -hv $t/lib.dylib | grep -q 'BINDS_TO_WEAK'
+otool -hv $t/lib.dylib | grep 'BINDS_TO_WEAK'
 
 # Classic dyld info: bound to libc++ (the definition dyld starts from)
 # and listed in weak_bind; no lazy binding for these calls.
@@ -25,8 +25,8 @@ $CXX --ld-path=$mold -dynamiclib -o $t/libc.dylib $t/a.o -Wl,-undefined,dynamic_
 dyld_info -fixups $t/libc.dylib > $t/cfixups
 grep -q 'bind *libc++/__Znam' $t/cfixups
 otool -l $t/libc.dylib | grep -A11 'LC_DYLD_INFO' > $t/info
-grep 'weak_bind_size' $t/info | grep -qv ' 0$'
-grep 'lazy_bind_size' $t/info | grep -q ' 0$'
+grep 'weak_bind_size' $t/info | grep -v ' 0$'
+grep 'lazy_bind_size' $t/info | grep ' 0$'
 
 # And an override in the executable wins for both dylibs.
 cat <<EOF2 | $CXX -O2 -o $t/main.o -c -xc++ -
@@ -40,6 +40,6 @@ extern "C" int f(int);
 int main() { int v = f(7); printf("%d %d\n", v, news); }
 EOF2
 $CXX --ld-path=$mold -o $t/exe $t/main.o $t/lib.dylib -Wl,-rpath,$t
-$t/exe | grep -q '^7 1$'
+$t/exe | grep '^7 1$'
 $CXX --ld-path=$mold -o $t/exec $t/main.o $t/libc.dylib -Wl,-rpath,$t
-$t/exec | grep -q '^7 1$'
+$t/exec | grep '^7 1$'

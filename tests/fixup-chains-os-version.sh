@@ -13,4 +13,4 @@ otool -l $t/exe1 > $t/log1
 ! grep -q LC_DYLD_CHAINED_FIXUPS %t/log1 || false
 
 $CC --ld-path=$mold -o $t/exe2 $t/a.o -Wl,-platform_version,macos,13,13
-otool -l $t/exe2 | grep -q LC_DYLD_CHAINED_FIXUPS
+otool -l $t/exe2 | grep LC_DYLD_CHAINED_FIXUPS

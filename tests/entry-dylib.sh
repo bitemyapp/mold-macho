@@ -17,8 +17,8 @@ st=0; $t/exe || st=$?
 st=0; $t/exe a b || st=$?
 [ $st = 3 ]
 
-nm -m $t/exe | grep -q 'undefined.*_exit'
-otool -l $t/exe | grep -q LC_MAIN
+nm -m $t/exe | grep 'undefined.*_exit'
+otool -l $t/exe | grep LC_MAIN
 
 # A -r link has no entry point: its output must not acquire an
 # undefined _main (a dylib built from Xcode's prelinked package

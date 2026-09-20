@@ -13,7 +13,7 @@ EOF
 # A subframework of "Big" that also admits the client "friend".
 $CC --ld-path=$mold -shared -o $t/libsub.dylib $t/a.o \
   -Wl,-umbrella,Big -Wl,-allowable_client,friend
-otool -l $t/libsub.dylib | grep -q 'client friend'
+otool -l $t/libsub.dylib | grep 'client friend'
 
 # A random client is rejected.
 not $CC --ld-path=$mold -o $t/exe $t/b.o $t/libsub.dylib 2> $t/log

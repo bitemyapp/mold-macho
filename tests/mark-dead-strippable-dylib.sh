@@ -14,7 +14,7 @@ int main() {}
 EOF
 
 $CC --ld-path=$mold -o $t/exe1 $t/d.o $t/b.dylib
-objdump --macho --dylibs-used $t/exe1 | grep -Fq b.dylib
+objdump --macho --dylibs-used $t/exe1 | grep -F b.dylib
 
 $CC --ld-path=$mold -o $t/exe2 $t/d.o $t/c.dylib
 objdump --macho --dylibs-used $t/exe2 > $t/log2

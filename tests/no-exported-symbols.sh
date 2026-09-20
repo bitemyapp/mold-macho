@@ -20,7 +20,7 @@ nm $t/libfoo.dylib > $t/syms
 not grep -q _foo $t/syms
 
 $mold -arch $ARCH -r $t/a.o -no_exported_symbols -o $t/b.o
-nm -m $t/b.o | grep -q 'non-external.*_foo'
+nm -m $t/b.o | grep 'non-external.*_foo'
 nm -gU $t/b.o > $t/syms
 not grep -q _ $t/syms
 

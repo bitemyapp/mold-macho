@@ -3,10 +3,7 @@ source "$(dirname "$0")"/common.inc
 
 sdk=$(xcrun --show-sdk-path)
 
-link() {
-  "$mold" -arch $ARCH -dylib -platform_version macos 13.0 13.0 \
-    -syslibroot "$sdk" -lSystem "$@"
-}
+link="$mold -arch $ARCH -dylib -platform_version macos 13.0 13.0 -syslibroot $sdk -lSystem"
 
 # Exercise both load command encodings explicitly. A newer SDK alone
 # must not cause a deployment-target warning: every fixture records
@@ -31,23 +28,23 @@ EOF
 
   # Inputs targeting an older or equal macOS version link quietly.
   for version in 12 13; do
-    link $t/macos$version.o -o $t/compatible.dylib 2> $t/compatible.log
+    $link $t/macos$version.o -o $t/compatible.dylib 2> $t/compatible.log
     test ! -s $t/compatible.log
   done
 
   # Unused archive members must not produce deployment warnings.
   rm -f $t/libnewer.a
   ar rcs $t/libnewer.a $t/macos14.o
-  link $t/macos13.o $t/libnewer.a -o $t/unused.dylib 2> $t/unused.log
+  $link $t/macos13.o $t/libnewer.a -o $t/unused.dylib 2> $t/unused.log
   test ! -s $t/unused.log
 
   # A newer deployment target is a warning, so these links must still
   # succeed. Identify the input and both versions in the diagnostic.
-  link $t/macos14.o -o $t/newer.dylib 2> $t/newer.log
+  $link $t/macos14.o -o $t/newer.dylib 2> $t/newer.log
   grep -Eq 'warning:.*newer.*macOS.*14\.0.*13\.0' $t/newer.log
   grep -Fq 'macos14.o' $t/newer.log
 
-  link $t/macos13.o $t/libnewer.a -u _from_macos_14 \
+  $link $t/macos13.o $t/libnewer.a -u _from_macos_14 \
     -o $t/archive.dylib 2> $t/archive.log
   grep -Eq 'warning:.*newer.*macOS.*14\.0.*13\.0' $t/archive.log
   grep -Fq 'libnewer.a' $t/archive.log

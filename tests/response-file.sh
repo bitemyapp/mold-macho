@@ -2,4 +2,4 @@
 . $(dirname $0)/common.inc
 
 echo ' -help' > $t/rsp
-$mold @$t/rsp | grep -q Usage
+$mold @$t/rsp | grep Usage

@@ -6,4 +6,4 @@ int main() {}
 EOF
 
 $CC --ld-path=$mold -o $t/exe $t/a.o
-otool -l $t/exe | grep -q 'tool 54321'
+otool -l $t/exe | grep 'tool 54321'

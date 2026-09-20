@@ -58,3 +58,5 @@ testname=$(basename "$0" .sh)
 echo -n "Testing $testname ... "
 t=out/test/$ARCH/$testname
 mkdir -p $t
+set -o pipefail
+set -x

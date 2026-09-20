@@ -57,4 +57,4 @@ int main() {
 }
 EOF
 $CC --ld-path=$mold -o $t/exe $t/main.o $t/r.o -Wl,-dead_strip
-$t/exe | grep -q '^3 4 4 9$'
+$t/exe | grep '^3 4 4 9$'

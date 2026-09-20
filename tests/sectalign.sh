@@ -9,7 +9,7 @@ EOF
 $CC --ld-path=$mold -o $t/exe $t/a.o -Wl,-sectalign,__DATA,__blob,0x4000
 otool -l $t/exe > $t/log
 # The section is 2^14-aligned.
-grep -A6 'sectname __blob' $t/log | grep -q 'align 2\^14'
+grep -A6 'sectname __blob' $t/log | grep 'align 2\^14'
 addr=$(grep -A2 'sectname __blob' $t/log | awk '/addr/{print $2}')
 [ $(( addr % 0x4000 )) -eq 0 ]
 

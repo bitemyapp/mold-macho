@@ -13,7 +13,7 @@ EOF2
 
 # Modern deployment targets default to chained fixups
 $CC --ld-path=$mold -o $t/exe $t/a.o
-otool -l $t/exe | grep -q LC_DYLD_CHAINED_FIXUPS
+otool -l $t/exe | grep LC_DYLD_CHAINED_FIXUPS
 $t/exe | grep '^5$'
 dyld_info -fixups $t/exe > $t/fixups
 grep -q 'bind.*_printf' $t/fixups

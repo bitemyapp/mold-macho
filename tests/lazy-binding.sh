@@ -15,19 +15,19 @@ int main(int argc, char **argv) { printf("%d\n", getpid() > 0 ? 4 : 0); return 0
 EOF2
 if [ $ARCH = arm64 ]; then classic=11.0; else classic=12.0; fi
 $CC --ld-path=$mold -o $t/exe $t/a.o -mmacosx-version-min=$classic
-$t/exe | grep -q '^4$'
+$t/exe | grep '^4$'
 otool -l $t/exe > $t/lc
 grep -q 'LC_DYLD_INFO_ONLY' $t/lc
 grep -q 'sectname __stub_helper' $t/lc
 grep -q 'sectname __la_symbol_ptr' $t/lc
 [ "$(grep -A4 'sectname __la_symbol_ptr' $t/lc | awk '/size/{print $2}')" = 0x0000000000000010 ]
-grep -A12 'LC_DYLD_INFO_ONLY' $t/lc | grep -q 'lazy_bind_size 32'
+grep -A12 'LC_DYLD_INFO_ONLY' $t/lc | grep 'lazy_bind_size 32'
 dyld_info -fixups $t/exe > $t/fixups
 grep -q '__got .* bind .*dyld_stub_binder' $t/fixups
 grep -q '__la_symbol_ptr .* lazy-bind .*_printf' $t/fixups
 grep -q '__la_symbol_ptr .* lazy-bind .*_getpid' $t/fixups
 [ "$(grep -c '__la_symbol_ptr .* rebase' $t/fixups)" = 2 ]
-nm -m $t/exe | grep -q 'undefined.*dyld_stub_binder'
+nm -m $t/exe | grep 'undefined.*dyld_stub_binder'
 # The indirect symbol table lists the stubs, the GOT, then the lazy
 # pointers (the stubs' symbols again).
 otool -I $t/exe > $t/isyms
@@ -45,12 +45,12 @@ else
 fi
 
 $CC --ld-path=$mold -o $t/exe_bal $t/a.o -mmacosx-version-min=$classic -Wl,-bind_at_load
-$t/exe_bal | grep -q '^4$'
+$t/exe_bal | grep '^4$'
 otool -l $t/exe_bal > $t/lc_bal
 not grep -q '__la_symbol_ptr' $t/lc_bal
-dyld_info -fixups $t/exe_bal | grep -q '__got .* bind .*_printf'
+dyld_info -fixups $t/exe_bal | grep '__got .* bind .*_printf'
 
 $CC --ld-path=$mold -o $t/exe_ch $t/a.o -mmacosx-version-min=13.0
-$t/exe_ch | grep -q '^4$'
+$t/exe_ch | grep '^4$'
 otool -l $t/exe_ch > $t/lc_ch
 not grep -q '__la_symbol_ptr' $t/lc_ch

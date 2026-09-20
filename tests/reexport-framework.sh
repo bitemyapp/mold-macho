@@ -8,7 +8,7 @@ echo 'int foo() { return 42; }' | $CC --ld-path=$mold -dynamiclib \
 echo 'int wrapper() { return 0; }' | $CC --ld-path=$mold -dynamiclib \
   -xc - -o $t/libouter.dylib -install_name $PWD/$t/libouter.dylib \
   -F$t -Wl,-reexport_framework,Foo
-otool -l $t/libouter.dylib | grep -q LC_REEXPORT_DYLIB
+otool -l $t/libouter.dylib | grep LC_REEXPORT_DYLIB
 
 echo 'int foo(); int main() { return foo() != 42; }' | $CC -c -xc - -o $t/a.o
 $CC --ld-path=$mold $t/a.o $t/libouter.dylib -o $t/exe

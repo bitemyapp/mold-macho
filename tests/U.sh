@@ -7,4 +7,4 @@ int main() { foo(); }
 EOF
 
 $CC --ld-path=$mold -o $t/exe $t/a.o -Wl,-U,_foo
-nm $t/exe | grep -q 'U _foo$'
+nm $t/exe | grep 'U _foo$'

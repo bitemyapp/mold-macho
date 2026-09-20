@@ -51,4 +51,4 @@ int main() {
 EOF
 
 $CC --ld-path=$mold -o $t/exe $t/main.o $t/a.o
-$t/exe | grep -q '^OK$'
+$t/exe | grep '^OK$'

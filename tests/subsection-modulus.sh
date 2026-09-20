@@ -49,7 +49,7 @@ EOF2
 
 # _z dead-stripped: _b keeps 8 mod 16 (8 bytes of padding after _a).
 $CC --ld-path=$mold -o $t/exe2 $t/main.o $t/a.o $t/b.o -Wl,-dead_strip
-nm -n $t/exe2 | grep -q ' _z$' && exit 1
+nm -n $t/exe2 | grep ' _z$' && exit 1
 nm -n $t/exe2 | grep -E ' _(a|b|c|d)$' | awk '{print $1}' > $t/addrs2
 python3 - $t/addrs2 <<'EOF2'
 import sys
@@ -57,4 +57,4 @@ a, b, c, d = [int(l, 16) for l in open(sys.argv[1])]
 assert b == a + 24 and b % 16 == 8, hex(b - a)
 assert c == b + 8 and d == c + 8
 EOF2
-$t/exe2 | grep -q '^16$'
+$t/exe2 | grep '^16$'

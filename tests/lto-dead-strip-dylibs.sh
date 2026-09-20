@@ -9,4 +9,4 @@ int main() {
 EOF
 
 $CXX --ld-path=$mold -o $t/exe $t/a.o -flto -dead_strip_dylibs
-$t/exe | grep -q 'Hello world'
+$t/exe | grep 'Hello world'

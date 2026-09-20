@@ -16,7 +16,7 @@ EOF2
 $CC --ld-path=$mold -shared -o $t/libouter.dylib $t/b.o \
   -install_name $PWD/$t/libouter.dylib \
   -Wl,-reexport_library,$t/libinner.dylib
-otool -l $t/libouter.dylib | grep -q LC_REEXPORT_DYLIB
+otool -l $t/libouter.dylib | grep LC_REEXPORT_DYLIB
 
 cat <<EOF2 | $CC -o $t/c.o -c -xc -
 #include <stdio.h>

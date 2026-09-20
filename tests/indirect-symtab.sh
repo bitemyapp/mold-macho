@@ -7,4 +7,4 @@ int main() { printf("Hello world\n"); }
 EOF
 
 $CC --ld-path=$mold -o $t/exe $t/a.o
-objdump --macho --indirect-symbols $t/exe | grep -q _printf
+objdump --macho --indirect-symbols $t/exe | grep _printf

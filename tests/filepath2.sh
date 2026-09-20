@@ -17,4 +17,4 @@ b.o
 EOF
 
 $CC --ld-path=$mold -o $t/exe -Xlinker -filelist -Xlinker $t/filelist,$t
-$t/exe | grep -q 'Hello world'
+$t/exe | grep 'Hello world'

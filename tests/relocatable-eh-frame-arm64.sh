@@ -18,13 +18,13 @@ cat <<EOF2 | $CXX -O0 -fasynchronous-unwind-tables -o $t/b.o -c -xc++ -
 struct S { virtual ~S(); virtual int g(); };
 int main() { S s; printf("%d\n", s.g() + 40); }
 EOF2
-otool -l $t/a.o | grep -q 'sectname __eh_frame' || skip
+otool -l $t/a.o | grep 'sectname __eh_frame' || skip
 
 $mold -r -arch $ARCH -o $t/r.o $t/a.o $t/b.o
 otool -l $t/r.o > $t/lc
 grep -q 'sectname __eh_frame' $t/lc
 # Bare regular section, as in ld-prime's -r output.
-grep -A8 'sectname __eh_frame' $t/lc | grep -q 'flags 0x00000000'
+grep -A8 'sectname __eh_frame' $t/lc | grep 'flags 0x00000000'
 nm -xp $t/r.o | awk '{print $NF}' > $t/names
 [ "$(grep -c '^EH_Frame1$' $t/names)" -ge 1 ]
 [ "$(grep -c '^func.eh$' $t/names)" -ge 1 ]
@@ -33,6 +33,6 @@ grep -q 'SUB     False     EH_Frame1' $t/relocs
 grep -q 'UNSIGND False     __ZN1S1gEv' $t/relocs
 
 $CXX --ld-path=$mold -o $t/exe $t/r.o
-$t/exe | grep -q '^42$'
+$t/exe | grep '^42$'
 $CXX -o $t/exe2 $t/r.o
-$t/exe2 | grep -q '^42$'
+$t/exe2 | grep '^42$'

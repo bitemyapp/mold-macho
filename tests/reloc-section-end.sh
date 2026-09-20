@@ -31,7 +31,7 @@ Lend:
 _end_ptr:
   .quad Lend
 EOF
-otool -rv $t/a.o | grep -q 'debug_info'
+otool -rv $t/a.o | grep 'debug_info'
 
 cat <<EOF | $CC -o $t/main.o -c -xc -
 #include <stdio.h>
@@ -44,7 +44,7 @@ EOF
 
 $mold -r -arch $ARCH -o $t/r.o $t/a.o
 $CC --ld-path=$mold -o $t/exe $t/main.o $t/r.o
-$t/exe | grep -q '^5 ok$'
+$t/exe | grep '^5 ok$'
 
 # Empty sections (an emptied coverage section, say) share a file
 # offset with a neighbor and must not confuse the copy.
@@ -57,4 +57,4 @@ _Thread_local int tls_var = 3;
 int get_tls(void) { return tls_var; }
 EOF
 $CC --ld-path=$mold -o $t/exe2 $t/main.o $t/a.o $t/b.o $t/c.o
-$t/exe2 | grep -q '^5 ok$'
+$t/exe2 | grep '^5 ok$'

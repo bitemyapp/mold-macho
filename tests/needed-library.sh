@@ -11,5 +11,5 @@ not grep -q libfoo.dylib $t/libs
 
 $CC --ld-path=$mold $t/a.o -o $t/exe \
   -Wl,-needed_library,$t/libfoo.dylib,-dead_strip_dylibs
-otool -L $t/exe | grep -q libfoo.dylib
+otool -L $t/exe | grep libfoo.dylib
 $t/exe

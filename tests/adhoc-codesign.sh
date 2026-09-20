@@ -10,8 +10,8 @@ int main() {
 EOF
 
 $CC --ld-path=$mold -B. -o $t/exe1 $t/a.o -Wl,-adhoc_codesign
-otool -l $t/exe1 | grep -q LC_CODE_SIGNATURE
-$t/exe1 | grep -Fq 'Hello world'
+otool -l $t/exe1 | grep LC_CODE_SIGNATURE
+$t/exe1 | grep -F 'Hello world'
 
 $CC --ld-path=$mold -B. -o $t/exe2 $t/a.o -Wl,-no_adhoc_codesign
 otool -l $t/exe2 > $t/log2

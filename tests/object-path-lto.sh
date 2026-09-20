@@ -9,5 +9,5 @@ int main() {
 EOF
 
 $CC --ld-path=$mold -o $t/exe $t/a.o -flto -Wl,-object_path_lto,$t/obj
-$t/exe | grep -q 'Hello world'
+$t/exe | grep 'Hello world'
 otool -l $t/obj > /dev/null

@@ -14,4 +14,4 @@ objdump -h $t/exe1 > $t/log1
 ! grep -q __init_offsets $t/log1 || false
 
 $CXX --ld-path=$mold -o $t/exe2 $t/a.o -Wl,-fixup_chains
-objdump -h $t/exe2 | grep -q __init_offsets
+objdump -h $t/exe2 | grep __init_offsets

@@ -9,10 +9,10 @@ int main() {
 EOF
 
 $CC --ld-path=$mold -o $t/exe1 $t/a.o -g
-nm -pa $t/exe1 | grep -q 'OSO /'
+nm -pa $t/exe1 | grep 'OSO /'
 
 $CC --ld-path=$mold -o $t/exe2 $t/a.o -g -Wl,-oso_prefix,.
-nm -pa $t/exe2 | grep -Eq 'OSO out'
+nm -pa $t/exe2 | grep -E 'OSO out'
 
 $CC --ld-path=$mold -o $t/exe3 $t/a.o -g -Wl,-oso_prefix,"`pwd`/"
-nm -pa $t/exe3 | grep -Eq 'OSO out'
+nm -pa $t/exe3 | grep -E 'OSO out'

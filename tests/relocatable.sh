@@ -15,7 +15,7 @@ EOF2
 
 # Merge the two objects into one relocatable object with our linker...
 $mold -r -arch $ARCH -platform_version macos 15.0 15.0 -o $t/merged.o $t/a.o $t/b.o
-otool -h $t/merged.o | grep -q '	1	' || otool -hv $t/merged.o | grep -q OBJECT
+otool -h $t/merged.o | grep '	1	' || otool -hv $t/merged.o | grep OBJECT
 
 cat <<EOF2 | $CC -o $t/main.o -c -xc -
 #include <stdio.h>

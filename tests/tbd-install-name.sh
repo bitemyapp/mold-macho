@@ -27,9 +27,9 @@ EOF
 $CC --ld-path=$mold -o $t/exe1 $t/libfoo.tbd $t/a.o \
   -Wl,-platform_version,macos,20.0,20.0 >& /dev/null
 
-otool -L $t/exe1 | grep -q /foo
+otool -L $t/exe1 | grep /foo
 
 $CC --ld-path=$mold -o $t/exe2 $t/libfoo.tbd $t/a.o \
   -Wl,-platform_version,macos,25.0,21.0 >& /dev/null
 
-otool -L $t/exe2 | grep -q /bar
+otool -L $t/exe2 | grep /bar

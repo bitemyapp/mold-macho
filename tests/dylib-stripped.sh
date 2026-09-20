@@ -14,7 +14,7 @@ __thread int xt = 3;
 EOF
 $CC --ld-path=$mold -dynamiclib -o $t/libx.dylib $t/a.o -install_name @rpath/libx.dylib
 strip $t/libx.dylib
-otool -l $t/libx.dylib | grep -q 'nextdefsym 0'
+otool -l $t/libx.dylib | grep 'nextdefsym 0'
 dyld_info -exports $t/libx.dylib > $t/exports
 grep -q '_xfn$' $t/exports
 grep -q '_xt \[per-thread\]$' $t/exports
@@ -26,10 +26,10 @@ extern __thread int xt;
 int main() { printf("%d %d\n", xfn(), xt); }
 EOF
 $CC --ld-path=$mold -o $t/exe $t/main.o $t/libx.dylib -Wl,-rpath,$t
-$t/exe | grep -q '^7 3$'
+$t/exe | grep '^7 3$'
 
 # And when reached through a re-export.
 $CC --ld-path=$mold -dynamiclib -o $t/liby.dylib -install_name @rpath/liby.dylib \
   -Wl,-reexport_library,$t/libx.dylib -Wl,-rpath,$t
 $CC --ld-path=$mold -o $t/exe2 $t/main.o $t/liby.dylib -Wl,-rpath,$t
-$t/exe2 | grep -q '^7 3$'
+$t/exe2 | grep '^7 3$'

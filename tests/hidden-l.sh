@@ -23,4 +23,4 @@ $t/exe | grep '^3$'
 # local in the symbol table.
 dyld_info -exports $t/exe > $t/exports
 not grep -q _three $t/exports
-nm $t/exe | grep -q 't _three'
+nm $t/exe | grep 't _three'

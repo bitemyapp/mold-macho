@@ -19,7 +19,7 @@ EOF
 
 $CC --ld-path=$mold -o $t/exe $t/a.o -Wl,-F$t -Wl,-needed_framework,Foo \
   -Wl,-dead_strip_dylibs
-otool -l $t/exe | grep -A3 'cmd LC_LOAD_DYLIB' | grep -Fq Foo.framework/Foo
+otool -l $t/exe | grep -A3 'cmd LC_LOAD_DYLIB' | grep -F Foo.framework/Foo
 
 $CC --ld-path=$mold -o $t/exe $t/a.o -Wl,-F$t -Wl,-framework,Foo \
   -Wl,-dead_strip_dylibs

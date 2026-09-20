@@ -8,4 +8,4 @@ EOF2
 
 $CC --ld-path=$mold -weak_framework CoreFoundation -o $t/exe $t/a.o
 $t/exe
-otool -l $t/exe | grep -q LC_LOAD_WEAK_DYLIB
+otool -l $t/exe | grep LC_LOAD_WEAK_DYLIB

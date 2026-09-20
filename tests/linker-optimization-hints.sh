@@ -35,4 +35,4 @@ int main() {
 EOF
 
 $CC --ld-path=$mold -o $t/exe $t/a.o $t/b.o
-$t/exe | grep -q 'Hello world -1 -1 -1 -1 2 3'
+$t/exe | grep 'Hello world -1 -1 -1 -1 2 3'

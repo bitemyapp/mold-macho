@@ -27,8 +27,8 @@ EOF
 
 $mold -r -arch $ARCH -o $t/r.o $t/a.o $t/b.o
 otool -l $t/r.o > $t/otool
-grep -A2 'sectname __objc_imageinfo' $t/otool | grep -q 'segname __DATA'
-grep -A3 'sectname __objc_imageinfo' $t/otool | grep -q 'size 0x0000000000000008'
+grep -A2 'sectname __objc_imageinfo' $t/otool | grep 'segname __DATA'
+grep -A3 'sectname __objc_imageinfo' $t/otool | grep 'size 0x0000000000000008'
 # Exactly one merged record.
 [ "$(grep -c 'sectname __objc_imageinfo' $t/otool)" = 1 ]
 
@@ -46,11 +46,11 @@ int main() {
 }
 EOF
 $CC --ld-path=$mold -o $t/exe $t/main.o $t/r.o -framework Foundation
-$t/exe | grep -q '^1 1 42$'
+$t/exe | grep '^1 1 42$'
 
 # The prelinked object goes through a dylib too.
 $CC --ld-path=$mold -dynamiclib -o $t/libfoo.dylib $t/r.o -framework Foundation \
   -install_name @rpath/libfoo.dylib
 $CC --ld-path=$mold -o $t/exe2 $t/main.o $t/libfoo.dylib -framework Foundation \
   -Wl,-rpath,$t
-$t/exe2 | grep -q '^1 1 42$'
+$t/exe2 | grep '^1 1 42$'

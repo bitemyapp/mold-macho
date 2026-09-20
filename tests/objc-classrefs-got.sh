@@ -30,10 +30,10 @@ int main() {
          [Foo class] == foo_class(), [NSMutableArray class] == array_class());
 }
 EOF2
-otool -l $t/a.o | grep -q 'sectname __objc_classrefs'
+otool -l $t/a.o | grep 'sectname __objc_classrefs'
 
 $CC --ld-path=$mold -o $t/exe $t/a.o $t/b.o -framework Foundation -mmacosx-version-min=15.0
-$t/exe | grep -q '^Foo NSMutableArray 1 1$'
+$t/exe | grep '^Foo NSMutableArray 1 1$'
 otool -l $t/exe > $t/lc
 not grep -q '__objc_classrefs' $t/lc
 nm $t/exe > $t/nm
@@ -43,5 +43,5 @@ dyld_info -fixups $t/exe > $t/fixups
 [ "$(grep '__got' $t/fixups | grep -c 'OBJC_CLASS_\$_NSMutableArray')" = 1 ]
 
 $CC --ld-path=$mold -o $t/exe14 $t/a.o $t/b.o -framework Foundation -mmacosx-version-min=14.0
-$t/exe14 | grep -q '^Foo NSMutableArray 1 1$'
-otool -l $t/exe14 | grep -q 'sectname __objc_classrefs'
+$t/exe14 | grep '^Foo NSMutableArray 1 1$'
+otool -l $t/exe14 | grep 'sectname __objc_classrefs'
