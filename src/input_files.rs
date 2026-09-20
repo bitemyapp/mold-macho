@@ -1544,7 +1544,7 @@ fn parse_eh_frame<E: Target>(
                 b'L' => {
                     cie.lsda_size = match data[pos] & 0xf {
                         0x3 | 0xb => 4, // DW_EH_PE_udata4, DW_EH_PE_sdata4
-                        0x0 => 8, // DW_EH_PE_absptr
+                        0x0 => 8,       // DW_EH_PE_absptr
                         enc => fatal!("{file_name}: __eh_frame: unknown LSDA encoding: {enc:#x}"),
                     };
                     pos += 1;
@@ -1710,39 +1710,6 @@ pub fn has_objc_sections(mf: &MappedFile) -> bool {
         off += lc.cmdsize as usize;
     }
     false
-}
-
-/// Returns the names of the global symbols an object file defines,
-/// without creating any linker state. Used to decide whether to load an
-/// archive member.
-pub fn defined_symbol_names(mf: &MappedFile) -> Vec<&'static str> {
-    let data = mf.data;
-    let hdr = MachHeader::read_from(data);
-    let mut names = Vec::new();
-
-    let mut off = size_of::<MachHeader>();
-    for _ in 0..hdr.ncmds {
-        let lc = LoadCommand::read_from(&data[off..]);
-        if lc.cmd == LC_SYMTAB {
-            let cmd = SymtabCommand::read_from(&data[off..]);
-            let nlists: Vec<NList> = read_array(data, cmd.symoff as usize, cmd.nsyms as usize);
-            let strtab: &[u8] = &data[cmd.stroff as usize..(cmd.stroff + cmd.strsize) as usize];
-            // SAFETY: input files are leaked, so the string table lives
-            // for the rest of the process.
-            let strtab: &'static [u8] =
-                validate_strtab(unsafe { std::mem::transmute::<&[u8], &'static [u8]>(strtab) });
-            for nlist in &nlists {
-                if !nlist.is_stab()
-                    && nlist.is_extern()
-                    && (nlist.n_type() != N_UNDF || nlist.is_common())
-                {
-                    names.push(symbol_name(strtab, nlist));
-                }
-            }
-        }
-        off += lc.cmdsize as usize;
-    }
-    names
 }
 
 /// Returns the slice of a fat (universal) file matching the target's CPU

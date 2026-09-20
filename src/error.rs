@@ -86,13 +86,6 @@ pub fn warn(msg: fmt::Arguments) {
     }
 }
 
-/// Prints an informational message to stdout.
-pub fn out(msg: fmt::Arguments) {
-    let text = format!("{msg}\n");
-    let _guard = OUTPUT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let _ = io::stdout().write_all(text.as_bytes());
-}
-
 /// Exits with a failure status if any error has been reported.
 pub fn checkpoint() {
     if has_error() {
@@ -129,12 +122,5 @@ macro_rules! error {
 macro_rules! warn {
     ($($arg:tt)*) => {
         $crate::error::warn(format_args!($($arg)*))
-    };
-}
-
-#[macro_export]
-macro_rules! out {
-    ($($arg:tt)*) => {
-        $crate::error::out(format_args!($($arg)*))
     };
 }
