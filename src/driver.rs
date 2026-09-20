@@ -58,11 +58,7 @@ fn sniff_target(argv: &[String]) -> Option<String> {
 }
 
 fn host_target() -> &'static str {
-    if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
-        "x86_64"
-    }
+    if cfg!(target_arch = "aarch64") { "arm64" } else { "x86_64" }
 }
 
 /// Links for the target `E`, or reports the target the inputs are

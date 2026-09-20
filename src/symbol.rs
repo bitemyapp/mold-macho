@@ -175,8 +175,12 @@ impl Symbol {
         F_USED,
         "Some relocation refers to this symbol, so an unresolved symbol is an error."
     );
-    sym_flag!(is_private_extern, set_is_private_extern, F_PRIVATE_EXTERN,
-        "A private external symbol (visibility hidden): resolves globally at link time but is neither exported nor kept as an external symbol.");
+    sym_flag!(
+        is_private_extern,
+        set_is_private_extern,
+        F_PRIVATE_EXTERN,
+        "A private external symbol (visibility hidden): resolves globally at link time but is neither exported nor kept as an external symbol."
+    );
     sym_flag!(
         is_strong_ref,
         set_is_strong_ref,

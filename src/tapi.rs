@@ -368,11 +368,7 @@ fn memchr_from(bytes: &[u8], needle: u8, from: usize) -> Option<usize> {
     let p = unsafe {
         libc::memchr(bytes.as_ptr().add(from) as *const _, needle as i32, bytes.len() - from)
     };
-    if p.is_null() {
-        None
-    } else {
-        Some(p as usize - bytes.as_ptr() as usize)
-    }
+    if p.is_null() { None } else { Some(p as usize - bytes.as_ptr() as usize) }
 }
 
 pub fn parse_version(val: &str) -> u32 {
@@ -703,9 +699,5 @@ fn select_arch<'a>(arch: &'a str, available: impl Iterator<Item = &'a str>) -> &
         exact |= name == arch;
         arm64e |= name == "arm64e";
     }
-    if arch == "arm64" && !exact && arm64e {
-        "arm64e"
-    } else {
-        arch
-    }
+    if arch == "arm64" && !exact && arm64e { "arm64e" } else { arch }
 }

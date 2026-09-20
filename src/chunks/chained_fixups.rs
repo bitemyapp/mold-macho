@@ -275,7 +275,8 @@ pub fn write_fixup_chains<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
                             .find(|hdr| hdr.addr <= addr && addr < hdr.addr + hdr.size)
                             .map(|hdr| format!("{},{}", hdr.segname, hdr.sectname))
                             .unwrap_or_default();
-                        fatal!("rebase target unencodable at {addr:#x} in {sect} (value {val:#x}); re-link with -no_fixup_chains"
+                        fatal!(
+                            "rebase target unencodable at {addr:#x} in {sect} (value {val:#x}); re-link with -no_fixup_chains"
                         );
                     }
                     let target = val & 0xf_ffff_ffff;

@@ -374,11 +374,7 @@ pub fn format_version(version: u32) -> String {
     let major = version >> 16;
     let minor = (version >> 8) & 0xff;
     let patch = version & 0xff;
-    if patch == 0 {
-        format!("{major}.{minor}")
-    } else {
-        format!("{major}.{minor}.{patch}")
-    }
+    if patch == 0 { format!("{major}.{minor}") } else { format!("{major}.{minor}.{patch}") }
 }
 
 pub fn platform_name(platform: u32) -> String {

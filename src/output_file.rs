@@ -24,7 +24,7 @@
 
 use std::os::unix::fs::{FileExt, PermissionsExt};
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 

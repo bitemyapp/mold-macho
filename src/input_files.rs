@@ -1164,11 +1164,7 @@ fn symbol_name(strtab: &'static [u8], nlist: &NList) -> &'static str {
     // its length.
     let len = unsafe {
         let p = libc::memchr(rest.as_ptr() as *const _, 0, rest.len());
-        if p.is_null() {
-            rest.len()
-        } else {
-            (p as usize) - (rest.as_ptr() as usize)
-        }
+        if p.is_null() { rest.len() } else { (p as usize) - (rest.as_ptr() as usize) }
     };
     // SAFETY: the whole table was checked as UTF-8 up front; any
     // slice of it on a codepoint boundary is valid, and a NUL
@@ -1912,8 +1908,10 @@ fn check_dylib_versions<E: Target>(ctx: &Context<E>, mf: &MappedFile) {
             if ctx.args.platform_minos != 0 && version.minos > ctx.args.platform_minos {
                 crate::warn!(
                     "building for {}-{}, but linking with dylib '{}' which was built for newer version {}",
-                    platform_name(ctx.args.platform), format_version(ctx.args.platform_minos),
-                    mf.name, format_version(version.minos)
+                    platform_name(ctx.args.platform),
+                    format_version(ctx.args.platform_minos),
+                    mf.name,
+                    format_version(version.minos)
                 );
             }
         } else {

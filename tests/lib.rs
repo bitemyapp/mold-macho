@@ -103,22 +103,24 @@ pub fn run(cases: &Path, linker: &Path) -> ExitCode {
         for _ in 0..nthreads.min(jobs.len()) {
             let root = root.clone();
             let linker = linker.clone();
-            scope.spawn(move || loop {
-                let idx = {
-                    let mut next = next.lock().unwrap();
-                    let idx = *next;
-                    *next += 1;
-                    idx
-                };
-                let Some(job) = jobs.get(idx) else { return };
+            scope.spawn(move || {
+                loop {
+                    let idx = {
+                        let mut next = next.lock().unwrap();
+                        let idx = *next;
+                        *next += 1;
+                        idx
+                    };
+                    let Some(job) = jobs.get(idx) else { return };
 
-                let (outcome, log) = run_one(job, &root, &linker);
-                match outcome {
-                    Outcome::Pass => println!("Testing {} ... OK", job.name),
-                    Outcome::Skip => println!("Testing {} ... skipped", job.name),
-                    Outcome::Fail => {
-                        println!("Testing {} ... FAILED", job.name);
-                        failed.lock().unwrap().push((job.name.clone(), log));
+                    let (outcome, log) = run_one(job, &root, &linker);
+                    match outcome {
+                        Outcome::Pass => println!("Testing {} ... OK", job.name),
+                        Outcome::Skip => println!("Testing {} ... skipped", job.name),
+                        Outcome::Fail => {
+                            println!("Testing {} ... FAILED", job.name);
+                            failed.lock().unwrap().push((job.name.clone(), log));
+                        }
                     }
                 }
             });

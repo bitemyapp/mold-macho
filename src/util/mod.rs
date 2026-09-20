@@ -14,11 +14,7 @@ pub fn align_to(val: u64, align: u64) -> u64 {
 /// the section's alignment.
 pub fn align_to_mod(val: u64, align: u64, modulus: u64) -> u64 {
     debug_assert!(align.is_power_of_two() && modulus < align);
-    if val <= modulus {
-        modulus
-    } else {
-        align_to(val - modulus, align) + modulus
-    }
+    if val <= modulus { modulus } else { align_to(val - modulus, align) + modulus }
 }
 
 /// Returns the bit field of `val` from bit `hi` down to bit `lo`,

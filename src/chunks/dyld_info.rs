@@ -6,7 +6,7 @@ use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
-use crate::passes::{objc_ref_addr, DataField};
+use crate::passes::{DataField, objc_ref_addr};
 use crate::target::{RelocClass, Target};
 use crate::util::write_uleb;
 

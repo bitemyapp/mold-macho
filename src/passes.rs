@@ -2,16 +2,16 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::chunks::misc::{code_signature_size, SectCreateSection};
+use crate::chunks::misc::{SectCreateSection, code_signature_size};
 use crate::chunks::symtab::SymtabSection;
 use crate::chunks::{
-    self, mach_header_size, ChunkId, OutputSection, OutputSectionId, OutputSegment, Tail,
+    self, ChunkId, OutputSection, OutputSectionId, OutputSegment, Tail, mach_header_size,
 };
 use crate::cmdline::InputArg;
 use crate::context::Context;
 use crate::error;
 use crate::fatal;
-use crate::filetype::{get_file_type, FileType};
+use crate::filetype::{FileType, get_file_type};
 use crate::input_files;
 use crate::input_files::FileId;
 use crate::input_sections::{InputSection, RelocTarget};
@@ -2997,7 +2997,10 @@ pub fn merge_objc_categories<E: Target>(ctx: &mut Context<E>) {
             if std::env::var_os("MOLD_OBJC_DEBUG").is_some() {
                 eprintln!(
                     "category merging: class at {:?} with {} categories skipped (lists in shape: {}, ro reachable: {})",
-                    cls, cat_ids.len(), ok, ro_ok
+                    cls,
+                    cat_ids.len(),
+                    ok,
+                    ro_ok
                 );
             }
             continue;
@@ -3520,21 +3523,13 @@ pub fn fix_synthetic_symbols<E: Target>(ctx: &mut Context<E>) {
                 else {
                     fatal!("no section for boundary symbol: {}", ctx.symbols[id]);
                 };
-                if is_start {
-                    hdr.addr
-                } else {
-                    hdr.addr + hdr.size
-                }
+                if is_start { hdr.addr } else { hdr.addr + hdr.size }
             }
             None => {
                 let Some(segment) = ctx.segments.iter().find(|s| s.name == seg) else {
                     fatal!("no segment for boundary symbol: {}", ctx.symbols[id]);
                 };
-                if is_start {
-                    segment.cmd.vmaddr
-                } else {
-                    segment.cmd.vmaddr + segment.cmd.vmsize
-                }
+                if is_start { segment.cmd.vmaddr } else { segment.cmd.vmaddr + segment.cmd.vmsize }
             }
         };
         ctx.symbols[id].value = value;
@@ -3598,11 +3593,7 @@ fn output_section_rank(segname: &str, sectname: &str) -> u32 {
 /// The segment for read-only-after-fixup data: __DATA_CONST unless
 /// -no_data_const.
 fn data_seg<E: Target>(ctx: &Context<E>) -> &'static str {
-    if ctx.args.data_const {
-        "__DATA_CONST"
-    } else {
-        "__DATA"
-    }
+    if ctx.args.data_const { "__DATA_CONST" } else { "__DATA" }
 }
 
 /// Sections a final link places in __DATA_CONST: data that needs no

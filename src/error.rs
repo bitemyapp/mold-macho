@@ -11,8 +11,8 @@
 
 use std::fmt;
 use std::io::{self, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 static COLOR: AtomicBool = AtomicBool::new(false);
 static FATAL_WARNINGS: AtomicBool = AtomicBool::new(false);

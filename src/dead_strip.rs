@@ -101,11 +101,7 @@ pub fn dead_strip<E: Target>(ctx: &mut Context<E>) {
                         && sym.is_extern()
                         && !sym.is_private_extern()
                         && sym.is_defined());
-                if is_root {
-                    sym.input_section().map(|i| i as usize)
-                } else {
-                    None
-                }
+                if is_root { sym.input_section().map(|i| i as usize) } else { None }
             })
             .collect()
     };

@@ -5,7 +5,7 @@
 use crate::chunks::{ChunkHeader, ChunkId, OutputSectionId};
 use crate::context::Context;
 use crate::input_sections::InputSectionId;
-use crate::passes::{objc_ref_addr, DataField};
+use crate::passes::{DataField, objc_ref_addr};
 use crate::symbol::SymbolId;
 use crate::target::Target;
 
