@@ -401,14 +401,13 @@ pub fn expand_response_files(argv: &[String]) -> Vec<String> {
             for c in text.chars() {
                 match quote {
                     Some(q) if c == q => quote = None,
-                    Some(_) => cur.push(c),
                     None if c == '"' || c == '\'' => quote = Some(c),
                     None if c.is_whitespace() => {
                         if !cur.is_empty() {
                             out.push(std::mem::take(&mut cur));
                         }
                     }
-                    None => cur.push(c),
+                    _ => cur.push(c),
                 }
             }
             if !cur.is_empty() {

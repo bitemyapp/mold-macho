@@ -1541,8 +1541,7 @@ fn parse_eh_frame<E: Target>(
             match c {
                 b'L' => {
                     cie.lsda_size = match data[pos] & 0xf {
-                        0x3 => 4, // DW_EH_PE_sdata4... actually udata4
-                        0xb => 4, // DW_EH_PE_sdata4
+                        0x3 | 0xb => 4, // DW_EH_PE_udata4, DW_EH_PE_sdata4
                         0x0 => 8, // DW_EH_PE_absptr
                         enc => fatal!("{file_name}: __eh_frame: unknown LSDA encoding: {enc:#x}"),
                     };
