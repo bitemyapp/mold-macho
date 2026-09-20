@@ -45,7 +45,7 @@ Build with `cargo build --release`. The binary is `target/release/mold`;
 The code mirrors mold's Rust port: `src/driver.rs` runs the passes in
 order, `src/passes.rs` implements them, `src/arch/` isolates the
 target-dependent relocation handling (arm64 and x86-64 are each
-instantiated in a crate under `targets/` and dispatched by the
+instantiated in a crate under `arch/` and dispatched by the
 executable in `cli/`), and `src/output_chunks/` builds every piece of
 the output file. Parsing is decoupled from resolution: all inputs,
 including every archive member, are parsed in parallel, and symbol

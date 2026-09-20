@@ -2,7 +2,7 @@
 //!
 //! The linker is generic over [`Arch`], which selects a CPU type and the
 //! target-dependent relocation handling. Each target is instantiated in a
-//! crate of its own under targets/.
+//! crate of its own under arch/.
 
 mod arm64;
 mod x86_64;
