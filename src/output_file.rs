@@ -22,24 +22,39 @@
 //! still being produced on the other cores; finish() waits for the last
 //! block.
 
+use std::ffi::CString;
 use std::os::unix::fs::{FileExt, PermissionsExt};
-use std::path::PathBuf;
+use std::path::Path;
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use crate::fatal;
 
-/// The output path of the in-progress link, removed on a fatal error so
-/// that a failed link doesn't leave a partial file behind.
-static OUTPUT_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
+/// The output path of the in-progress link, removed on a fatal error or
+/// a crash so that a failed link doesn't leave a partial file behind.
+static OUTPUT_PATH: AtomicPtr<libc::c_char> = AtomicPtr::new(std::ptr::null_mut());
 
-/// Removes a partially-written output file after a fatal error.
+fn set_output_path(path: Option<&Path>) {
+    // Published paths live until process exit: a signal on another thread
+    // may still be using the old pointer when this registration changes.
+    let ptr = path.map_or(std::ptr::null_mut(), |path| {
+        CString::new(path.as_os_str().as_encoded_bytes())
+            .expect("output path contains NUL")
+            .into_raw()
+    });
+    OUTPUT_PATH.store(ptr, Ordering::Release);
+}
+
+/// Removes a partially written output file.
 pub fn cleanup() {
-    if let Ok(mut guard) = OUTPUT_PATH.lock()
-        && let Some(path) = guard.take()
-    {
-        let _ = std::fs::remove_file(path);
+    let path = OUTPUT_PATH.swap(std::ptr::null_mut(), Ordering::AcqRel);
+    if !path.is_null() {
+        // SAFETY: path is a published, NUL-terminated string that is never
+        // freed. This is also called from a signal handler, so it must not
+        // lock, allocate or drop owned storage. unlink is signal-safe.
+        unsafe { libc::unlink(path) };
     }
 }
 
@@ -98,7 +113,7 @@ impl OutputFile {
         // kernel caches code signature state per vnode, so a fresh file
         // avoids stale-signature kills.
         let _ = std::fs::remove_file(path);
-        *OUTPUT_PATH.lock().unwrap() = Some(PathBuf::from(path));
+        set_output_path(Some(Path::new(path)));
 
         let file =
             std::fs::File::create(path).unwrap_or_else(|e| fatal!("cannot write {path}: {e}"));
@@ -161,7 +176,7 @@ impl OutputFile {
         {
             fatal!("cannot chmod {}: {e}", self.path);
         }
-        *OUTPUT_PATH.lock().unwrap() = None;
+        set_output_path(None);
     }
 }
 

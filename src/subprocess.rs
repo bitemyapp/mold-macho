@@ -1,37 +1,38 @@
-//! Process management, ported from mold-rust's subprocess.rs.
-//!
-//! Exiting a program with large memory usage is slow - unmapping
-//! gigabytes of input files can take a hundred milliseconds or more,
-//! all of it after the output is already on disk. To hide the
-//! latency, the linker forks at startup: the child does the actual
-//! linking and pokes a pipe the moment the output is complete; the
-//! parent exits right then, and the child's teardown happens off
-//! anyone's critical path. If the child dies before notifying, the
-//! parent relays its exit status (or signal) instead.
+//! Process management: forking a child to hide exit latency, and
+//! signal handling that removes a partial output file.
 
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::os::unix::io::{AsRawFd, FromRawFd, OwnedFd};
+use std::sync::Mutex;
 
-static PIPE_WRITE_FD: AtomicI32 = AtomicI32::new(-1);
+static PIPE_WRITER: Mutex<Option<OwnedFd>> = Mutex::new(None);
 
+// Exiting from a program with large memory usage is slow --
+// it may take a few hundred milliseconds. To hide the latency,
+// we fork a child and let it do the actual linking work.
 pub fn fork_child() {
     let mut pipefd = [0i32; 2];
-    // SAFETY: plain libc calls with valid arguments.
-    unsafe {
+    // SAFETY: pipe initializes both descriptors on success; each then has
+    // exactly one owner in this process.
+    let (reader, writer) = unsafe {
         if libc::pipe(pipefd.as_mut_ptr()) == -1 {
             eprintln!("mold: pipe failed");
             std::process::exit(1);
         }
+        (OwnedFd::from_raw_fd(pipefd[0]), OwnedFd::from_raw_fd(pipefd[1]))
+    };
+    // SAFETY: this runs before the linker starts its worker threads. The
+    // parent only waits for completion and exits; the child continues linking.
+    unsafe {
         let pid = libc::fork();
         if pid == -1 {
             eprintln!("mold: fork failed");
             std::process::exit(1);
         }
         if pid > 0 {
-            // Parent: wait for the child's "output written" byte, or
-            // for its death.
-            libc::close(pipefd[1]);
+            // Parent
+            drop(writer);
             let mut buf = [0u8; 1];
-            if libc::read(pipefd[0], buf.as_mut_ptr().cast::<libc::c_void>(), 1) == 1 {
+            if libc::read(reader.as_raw_fd(), buf.as_mut_ptr().cast(), 1) == 1 {
                 libc::_exit(0);
             }
             let mut status = 0;
@@ -44,21 +45,51 @@ pub fn fork_child() {
             }
             libc::_exit(1);
         }
-        // Child
-        libc::close(pipefd[0]);
     }
-    PIPE_WRITE_FD.store(pipefd[1], Ordering::Relaxed);
+    // Child
+    drop(reader);
+    *PIPE_WRITER.lock().unwrap() = Some(writer);
 }
 
 /// Tells the parent that the output is complete.
 pub fn notify_parent() {
-    let fd = PIPE_WRITE_FD.swap(-1, Ordering::Relaxed);
-    if fd == -1 {
+    let Some(writer) = PIPE_WRITER.lock().unwrap().take() else {
         return;
-    }
+    };
     let buf = [1u8];
-    // SAFETY: fd is a valid pipe write end.
+    // SAFETY: writer owns a valid pipe write end.
     unsafe {
-        libc::write(fd, buf.as_ptr().cast::<libc::c_void>(), 1);
+        libc::write(writer.as_raw_fd(), buf.as_ptr().cast(), 1);
+    }
+}
+
+extern "C" fn on_signal(
+    signo: libc::c_int,
+    _info: *mut libc::siginfo_t,
+    _context: *mut libc::c_void,
+) {
+    // The output is written in place as its ranges are finished, so a
+    // crash in the middle of a link would leave a truncated file at the
+    // output path. Remove it before dying of the signal.
+    crate::output_file::cleanup();
+    // Re-throw the signal
+    // SAFETY: restoring the default handlers and re-raising.
+    unsafe {
+        libc::signal(libc::SIGSEGV, libc::SIG_DFL);
+        libc::signal(libc::SIGBUS, libc::SIG_DFL);
+        libc::raise(signo);
+    }
+}
+
+pub fn install_signal_handler() {
+    // SAFETY: installing a signal handler with the three-argument SA_SIGINFO
+    // calling convention.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = on_signal as *const () as libc::sighandler_t;
+        libc::sigemptyset(&raw mut action.sa_mask);
+        action.sa_flags = libc::SA_SIGINFO;
+        libc::sigaction(libc::SIGSEGV, &raw const action, std::ptr::null_mut());
+        libc::sigaction(libc::SIGBUS, &raw const action, std::ptr::null_mut());
     }
 }

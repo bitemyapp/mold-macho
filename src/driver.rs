@@ -79,6 +79,7 @@ pub fn link<E: Target>(cmdline: Arc<[Cow<'static, OsStr>]>) -> Result<i32, &'sta
     crate::error::set_demangle(ctx.args.demangle);
 
     let t_all = ctx.timer("all");
+    crate::subprocess::install_signal_handler();
 
     // Read every input eagerly, then resolve; loading auto-linked
     // libraries or the LTO output adds inputs, so resolution repeats
