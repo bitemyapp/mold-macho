@@ -2,14 +2,14 @@
 //!
 //! An arm64 bl/b reaches +-128 MiB; a __TEXT section larger than that
 //! needs islands of trampolines so any branch can reach its target.
-//! The layout follows mold's design (mold-rust's thunks.rs): thunks
+//! The layout follows mold's thunks.rs: thunks
 //! are placed after each batch of code, and a batch never grows so
 //! large that its own thunk would fall out of reach - the layout
 //! cursor and the scan cursor stay within one branch reach (minus
 //! margin) of each other, so placing a thunk can never invalidate an
 //! earlier layout decision.
 //!
-//! As in mold-rust, a thunk entry belongs to a *symbol*, not to a
+//! As in mold, a thunk entry belongs to a *symbol*, not to a
 //! relocation: the first pass pessimistically gives every symbol that
 //! some branch of the batch might not reach an entry, deduplicated by
 //! an atomic mark on the symbol inside the parallel scan, and a symbol
@@ -18,7 +18,7 @@
 //! gather_thunk_addresses records each symbol's entry addresses so that
 //! applying an out-of-range branch just picks the one within reach.
 //!
-//! mold-rust additionally trims the pessimistic entries once addresses
+//! mold additionally trims the pessimistic entries once addresses
 //! are final (remove_redundant_thunks) and lays the section out again.
 //! Ours does not: the first pass already skips targets the section's
 //! size bound proves reachable, so on a debug clang link the trim
@@ -62,7 +62,7 @@ pub fn create_range_extension_thunks<E: Target>(
     let mut thunks: Vec<chunks::Thunk> = Vec::new();
     // Thunks before this index have fallen out of reach of the current
     // batch; their symbols are unmarked so they can take a new entry
-    // (mold-rust's cursor A).
+    // (mold's cursor A).
     let mut reachable_from = 0usize;
     let mut off: u64 = 0;
     let mut i = 0;
@@ -155,7 +155,7 @@ fn release_out_of_reach<E: Target>(
 /// that may be out of reach and is not already covered by a thunk still
 /// in reach (its symbol is marked), claims the symbol with mark() and
 /// gives it an entry in a new thunk at `thunk_off`. Returns the entry
-/// count. mold-rust scans each batch's members with par_iter and
+/// count. mold scans each batch's members with par_iter and
 /// dedups with the symbol's atomic mark the same way.
 fn scan_batch<E: Target>(
     ctx: &mut Context<E>,
@@ -223,12 +223,12 @@ fn scan_batch<E: Target>(
 
 /// Records every thunk entry's address on its symbol (SymAux::
 /// thunk_addrs), in address order, so that applying an out-of-range
-/// branch can pick the entry within reach. mold-rust's
+/// branch can pick the entry within reach. mold's
 /// gather_thunk_addresses.
 pub fn gather_thunk_addresses<E: Target>(ctx: &mut Context<E>, osecs: &[OutputSectionId]) {
     // The sections are read while the symbol tables are written, so
     // the borrows are split and the addresses recorded as the thunks
-    // are walked, without a temporary list (mold-rust 94e2104).
+    // are walked, without a temporary list (mold 94e2104).
     let output_sections = &ctx.output_sections;
     let symtab = &mut ctx.symbols;
     let sym_aux = &mut ctx.sym_aux;

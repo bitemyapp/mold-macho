@@ -2,7 +2,7 @@
 
 use crate::chunks::ChunkId;
 
-/// A subsection index, u32 as in mold-rust.
+/// A subsection index, u32 as in mold.
 pub type InputSectionId = u32;
 
 /// The subsection arena. Indexable by a u32 id or a usize (through
@@ -84,7 +84,7 @@ pub struct Reloc {
     pub addend: i64,
 }
 
-// A Reloc is the size of an ELF RELA entry, which mold-rust reads from
+// A Reloc is the size of an ELF RELA entry, which mold reads from
 // the mapping without materializing anything; Mach-O needs the record
 // processed (ADDEND fusion, SUBTRACTOR pairing, subsection rebasing),
 // so this is the form that processing produces.
@@ -141,7 +141,7 @@ pub struct InputSection {
     pub file: u32,
     /// Index of the parent section's header in the owning object's
     /// section list (the internal object's, for a synthesized one):
-    /// mold-rust's shndx. Resolved through Context::hdr_of; a u32 index
+    /// mold's shndx. Resolved through Context::hdr_of; a u32 index
     /// instead of an 8-byte header pointer. `p2align` is held inline
     /// because it is the one header field the linker raises per
     /// subsection.
@@ -157,7 +157,7 @@ pub struct InputSection {
     /// `size` - or 0 when there are none (a zero-fill or empty
     /// section). Stored as an integer, not a slice, to save 8 bytes and
     /// keep the struct trivially Send/Sync; read through `data()`.
-    /// mold-rust likewise keeps `contents` as a bare address.
+    /// mold likewise keeps `contents` as a bare address.
     pub contents: usize,
     /// This subsection's relocations: a range in the owning object's
     /// `relocs` arena, offsets relative to the subsection. sold keeps
@@ -167,7 +167,7 @@ pub struct InputSection {
     pub nrels: u32,
     /// The chunk this subsection is laid out in, as `ChunkId::pack`
     /// encodes it, or `u32::MAX` until assigned: read through
-    /// `output_section()`. mold-rust's field of this name holds an
+    /// `output_section()`. mold's field of this name holds an
     /// Option<OutputSectionId> (a word, thanks to the id's niche); a
     /// Mach-O subsection may also be placed in the GOT (a folded
     /// __objc_classrefs entry) or in __objc_methlist (a rewritten
@@ -178,7 +178,7 @@ pub struct InputSection {
     /// section stays well under 4 GiB, so a u32 suffices.
     pub offset: u32,
     /// IS_ALIVE and the transient IS_VISITED bit, in one atomic byte so
-    /// the parallel dead-strip walk marks sections in place (mold-rust's
+    /// the parallel dead-strip walk marks sections in place (mold's
     /// InputSection flags). Read through is_alive(); the &mut setters
     /// write without an atomic operation.
     pub flags: std::sync::atomic::AtomicU8,
@@ -194,7 +194,7 @@ pub struct InputSection {
 }
 
 // InputSection is the highest-count struct in a link (millions on a
-// debug build), so it is kept compact: 56 bytes, under mold-rust's 64
+// debug build), so it is kept compact: 56 bytes, under mold's 64
 // (ours carries the unwind range but no section-name/flags word).
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<InputSection>() == 56);

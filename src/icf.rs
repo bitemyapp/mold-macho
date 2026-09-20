@@ -152,7 +152,7 @@ impl SipHash13_128 {
     }
 }
 
-/// A lock-free digest -> leader map, ported from mold-rust. It counts
+/// A lock-free digest -> leader map, ported from mold. It counts
 /// the distinct digests in a propagation round and, as a side effect,
 /// records the lowest-index candidate for each digest as its class
 /// leader - so counting classes and electing leaders is one pass, no
@@ -356,7 +356,7 @@ pub fn icf_sections<E: Target>(ctx: &mut Context<E>) {
 
     // The base digest of a candidate: its bytes and the non-candidate
     // parts of its edges, hashed with SipHash13-128 exactly as
-    // mold-rust's compute_digest does (candidate edges are mixed in
+    // mold's compute_digest does (candidate edges are mixed in
     // during the rounds instead). A fixed key keeps the link
     // reproducible; the digest is used only to group, never emitted.
     const KEY: [u8; 16] = *b"mold-macho-icf!!";
@@ -413,12 +413,12 @@ pub fn icf_sections<E: Target>(ctx: &mut Context<E>) {
     // Content is hashed exactly once; the refinement rounds mix only
     // fixed-size digests - each candidate's base digest plus its
     // candidate-edge targets' previous-round digests - via
-    // update_digest, mold-rust's aligned 16-byte fast path, so a round
+    // update_digest, mold's aligned 16-byte fast path, so a round
     // is cheap however many rounds log2(n) requires.
     let base: Vec<Digest> = candidates.par_iter().map(|&id| base_hash(ctx, id)).collect();
 
     // Candidate edges in CSR form - one flat values array indexed by a
-    // per-candidate prefix-summed offset, exactly mold-rust's Edges
+    // per-candidate prefix-summed offset, exactly mold's Edges
     // (gather_edges). The propagation loop is the hot path; a single
     // contiguous array keeps it cache-friendly, where a Vec<Vec<u32>>
     // would chase one heap allocation per candidate.
@@ -479,7 +479,7 @@ pub fn icf_sections<E: Target>(ctx: &mut Context<E>) {
             (0..candidates.len())
                 .into_par_iter()
                 .map(|i| {
-                    // next[i] = H(cur[i], cur[neighbors]) - mold-rust's
+                    // next[i] = H(cur[i], cur[neighbors]) - mold's
                     // propagate hashes the vertex's own current digest,
                     // so its nth-round digest is a hash of its unfolding
                     // into a tree of depth n.

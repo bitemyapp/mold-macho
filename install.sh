@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs the release build as $PREFIX/bin/mold and creates the
 # ld64.mold symlink next to it, the name to give clang's --ld-path or
-# swiftc's -use-ld. Mirrors mold-rust's install-mold.sh, where the
+# swiftc's -use-ld. Mirrors mold's install-mold.sh, where the
 # symlink is ld.mold.
 set -e
 

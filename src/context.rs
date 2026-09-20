@@ -81,10 +81,10 @@ pub struct Context<E: Target> {
     /// All input sections, in one arena.
     pub isecs: crate::input_sections::InputSections,
     /// The object that owns the linker-synthesized sections and
-    /// symbols, once created; mold-rust's internal_obj.
+    /// symbols, once created; mold's internal_obj.
     pub internal_obj: Option<usize>,
     /// Per-symbol synthetic-slot indices (SymbolId-indexed), grown
-    /// lazily; mold-rust's SymbolAux side table.
+    /// lazily; mold's SymbolAux side table.
     pub sym_aux: Vec<crate::symbol::SymAux>,
     /// Input-order counter for resolution tie-breaking.
     pub priority_counter: u32,
@@ -105,7 +105,7 @@ pub struct Context<E: Target> {
     pub fdes: Vec<crate::input_files::Fde>,
     /// The chunks of the output, in file order, and the segments they
     /// are grouped into. Each chunk's header and data live in the
-    /// typed field for its kind below, as in mold-rust.
+    /// typed field for its kind below, as in mold.
     pub chunks: Vec<ChunkId>,
     pub segments: Vec<OutputSegment>,
     pub mach_header: OutputMachHeader,
@@ -372,7 +372,7 @@ impl<E: Target> Context<E> {
     }
 
     /// The parent section header of a subsection, through its object's
-    /// section list - mold-rust resolves a section's shdr through its
+    /// section list - mold resolves a section's shdr through its
     /// file the same way.
     #[inline]
     pub fn hdr_of(&self, isec: &InputSection) -> &crate::macho::MachSection {
@@ -391,7 +391,7 @@ impl<E: Target> Context<E> {
     /// the all-absent default for symbols with no slots (the table is
     /// grown lazily by the first setter).
     pub fn sym_aux(&self, id: SymbolId) -> &crate::symbol::SymAux {
-        // Sparse, as mold-rust's SymbolAux: the symbol carries an index
+        // Sparse, as mold's SymbolAux: the symbol carries an index
         // into the table, NONE for the vast majority that have no slot.
         match self.symbols[id].aux_idx {
             crate::symbol::NONE => &crate::symbol::NONE_AUX,
@@ -413,7 +413,7 @@ impl<E: Target> Context<E> {
         id: SymbolId,
     ) -> &'a mut crate::symbol::SymAux {
         // Allocate the symbol's entry on first use; the table holds only
-        // the symbols that take a slot (mold-rust's sparse SymbolAux).
+        // the symbols that take a slot (mold's sparse SymbolAux).
         if symtab[id].aux_idx == crate::symbol::NONE {
             symtab[id].aux_idx = sym_aux.len() as u32;
             sym_aux.push(Default::default());
@@ -435,7 +435,7 @@ impl<E: Target> Context<E> {
     /// is placed (literal-merge losers borrow their survivor's), so
     /// this is one field read.
     /// A subsection's output address: its output section's address plus
-    /// its offset there, as mold-rust's isec.addr(ctx) derives it - not
+    /// its offset there, as mold's isec.addr(ctx) derives it - not
     /// a cached field, which cost 8 bytes on every subsection. A
     /// literal-merge loser reports its surviving copy's address (the
     /// redirect is followed only when one exists, so the common case is

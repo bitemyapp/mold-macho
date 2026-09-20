@@ -515,7 +515,7 @@ impl Target for Arm64 {
                     if !(-(1 << 27)..1 << 27).contains(&val) {
                         // Out of reach: branch through one of the
                         // symbol's thunk entries that is within reach of
-                        // here (mold-rust's thunk_addrs lookup).
+                        // here (mold's thunk_addrs lookup).
                         let thunk = ctx.reloc_target_sym(obj, r).and_then(|sym| {
                             crate::thunks::reachable_thunk_addr::<Self>(ctx, sym, p)
                         });

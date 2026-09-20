@@ -6,7 +6,7 @@
 //! Reachability follows relocations and unwind-info edges, so a live
 //! function keeps its LSDA and personality. This is passes.rs's
 //! liveness walk's section-level counterpart, and mirrors
-//! gc_sections.rs in mold-rust (dead-strip.cc in sold).
+//! gc_sections.rs in mold (dead-strip.cc in sold).
 
 use crate::context::Context;
 use crate::input_files::FileId;
@@ -31,7 +31,7 @@ pub fn dead_strip<E: Target>(ctx: &mut Context<E>) {
     };
     let redirects = &redirects;
     // Liveness is marked in place, on the section's atomic visited bit
-    // (mold-rust's IS_VISITED), rather than in side arrays copied back
+    // (mold's IS_VISITED), rather than in side arrays copied back
     // at the end.
     let mark = move |ctx: &Context<E>,
                      pred: &mut Vec<usize>,

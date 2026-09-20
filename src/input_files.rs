@@ -12,7 +12,7 @@ use crate::target::Target;
 /// A relocatable object file.
 /// A file a symbol is owned by: an object or a dylib, by index in
 /// ctx.objs or ctx.dylibs. Dylib(u32::MAX) is an import resolved by
-/// dynamic lookup, which no dylib in the link provides. mold-rust's
+/// dynamic lookup, which no dylib in the link provides. mold's
 /// FileId.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileId {
@@ -104,7 +104,7 @@ impl ObjectFile {
     /// sections standing for merged Objective-C records, folded class
     /// references or the __common zero-fill of tentative definitions,
     /// and symbols such as __mh_execute_header. It has no file behind
-    /// it and no symbol table of its own; mold-rust's
+    /// it and no symbol table of its own; mold's
     /// ObjectFile::internal.
     pub fn internal() -> Self {
         let mf: &'static MappedFile = Box::leak(Box::new(MappedFile {
@@ -320,7 +320,7 @@ impl StagedObject {
 /// clang always lay it out) the split is free, and the passes that
 /// only want externals - resolution, weak-def coalescing, the intern
 /// batch - or only locals - the anonymous symbol slots, the local
-/// symtab - walk their half instead of testing every entry: mold-rust's
+/// symtab - walk their half instead of testing every entry: mold's
 /// first_global. Without a usable LC_DYSYMTAB the table is scanned once
 /// and the split is used only if it really is partitioned.
 fn first_global_of(nlists: &[NList], dysym: Option<&DysymtabCommand>) -> Option<u32> {
@@ -436,7 +436,7 @@ pub fn stage_object<E: Target>(
     // Read the symbol table. The nlist_64 array is used straight from
     // the mmap when it is 8-aligned (ld64 aligns it; NList is #[repr(C)]
     // nlist_64, all integer fields, so any bytes are a valid value) -
-    // no copy of 16 bytes per symbol. mold-rust borrows its ElfSym
+    // no copy of 16 bytes per symbol. mold borrows its ElfSym
     // array the same way (Cow, Owned only for synthesized symbols).
     let mut nlists: std::borrow::Cow<'static, [NList]> = std::borrow::Cow::Borrowed(&[]);
     let mut strtab: &'static [u8] = &[];
@@ -1188,7 +1188,7 @@ pub const UNWIND_NONE: u32 = u32::MAX;
 /// One record per function, walked by unwind-info encoding, dead-strip
 /// and ICF, so it is kept to eight u32s (32 bytes): every index is a
 /// u32 with `UNWIND_NONE` for "absent" rather than an `Option<usize>`,
-/// which is 16 bytes each - as mold-rust's Fde/Cie hold u32 indices.
+/// which is 16 bytes each - as mold's Fde/Cie hold u32 indices.
 /// Read the optional fields through `personality()`, `lsda()`, `fde()`.
 #[derive(Clone, Debug)]
 pub struct UnwindRecord {
@@ -1360,7 +1360,7 @@ pub struct Cie {
     pub obj: u32,
     pub input_addr: u32,
     /// The CIE bytes: a slice of the object's __eh_frame (with its
-    /// subtraction pairs pre-applied), not a per-record copy - mold-rust's
+    /// subtraction pairs pre-applied), not a per-record copy - mold's
     /// CieRecord borrows its contents the same way.
     pub data: &'static [u8],
     pub personality: Option<SymbolId>,
@@ -1392,7 +1392,7 @@ pub struct Fde {
     pub output_offset: u32,
 }
 
-// Every index a u32 and the record bytes borrowed, as in mold-rust
+// Every index a u32 and the record bytes borrowed, as in mold
 // (whose FdeRecord derives even more and is 16 bytes).
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<Fde>() == 56);

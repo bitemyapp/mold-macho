@@ -556,7 +556,7 @@ pub fn claim_new_dylibs<E: Target>(ctx: &mut Context<E>, first: usize) {
 /// references or tentative definitions, and symbols such as
 /// __mh_execute_header. It takes part in every pass like an input
 /// object with no symbol table of its own, so no pass has to treat
-/// synthesized sections and symbols as fileless. mold-rust's
+/// synthesized sections and symbols as fileless. mold's
 /// create_internal_file.
 pub fn create_internal_file<E: Target>(ctx: &mut Context<E>) {
     ctx.internal_obj = Some(ctx.objs.len());
@@ -1293,7 +1293,7 @@ pub fn merge_literals<E: Target>(ctx: &mut Context<E>) {
 }
 
 /// Points every symbol defined in a merged-away subsection at the
-/// surviving one - mold-rust makes the merged section's fragment the
+/// surviving one - mold makes the merged section's fragment the
 /// symbol's origin - so a symbol's address never follows a replacement
 /// chain. The copies are identical, so the symbol's offset is
 /// unchanged. (Section-relative relocations still resolve through the
@@ -1680,7 +1680,7 @@ fn same_shape(
 /// the first strong definition it meets; a strong definition in any
 /// other live object that lost to it is an error (a weak or common one
 /// yields quietly). Reported after resolution settles, sorted by name,
-/// so the messages are deterministic: mold-rust's
+/// so the messages are deterministic: mold's
 /// check_duplicate_symbols.
 pub fn check_duplicate_symbols<E: Target>(ctx: &Context<E>) {
     use rayon::prelude::*;
@@ -4858,7 +4858,7 @@ pub fn create_output_symtab<E: Target>(
     // into their object's mapped string table, so they dedup within an
     // object but keep one copy per object that defines them; that
     // costs about 1MB of a 154MB string table (still under ld64's),
-    // far less than mold-rust, which dedups nothing here at all.
+    // far less than mold, which dedups nothing here at all.
     {
         use rayon::prelude::*;
         debug_assert_eq!(names.len(), data.entries.len());

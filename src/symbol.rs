@@ -2,12 +2,12 @@
 
 use crate::input_files::FileId;
 
-/// A symbol index, u32 as in mold-rust: every per-symbol and
+/// A symbol index, u32 as in mold: every per-symbol and
 /// per-nlist vector of ids is half the size of a usize one.
 pub type SymbolId = u32;
 
 /// A symbol's owning file in one u32 - none, an object index, or a
-/// dylib index with the DYLIB bit - mold-rust's SymbolFile. The
+/// dylib index with the DYLIB bit - mold's SymbolFile. The
 /// dynamic-lookup import (FileId::Dylib(u32::MAX): a dylib index
 /// naming no dylib) packs as the one value the bit and NONE leave.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,7 +52,7 @@ impl SymbolFile {
 #[derive(Debug)]
 pub struct Symbol {
     /// The name, as a pointer and a u32 length rather than a 16-byte
-    /// &str - mold-rust's name_ptr/name_len. Read through name().
+    /// &str - mold's name_ptr/name_len. Read through name().
     name_ptr: usize,
     name_len: u32,
     /// The owning file - the object or dylib that defines the symbol -
@@ -65,10 +65,10 @@ pub struct Symbol {
     /// symbols.
     pub value: u64,
     /// Index into the sparse SymAux table (ctx.sym_aux), or NONE: only
-    /// symbols with a stub/GOT/TLV/objc slot have an entry - mold-rust's
+    /// symbols with a stub/GOT/TLV/objc slot have an entry - mold's
     /// aux_idx - instead of 16 bytes per symbol whether needed or not.
     pub aux_idx: u32,
-    /// The boolean attributes, packed into one atomic word as mold-rust
+    /// The boolean attributes, packed into one atomic word as mold
     /// keeps its Symbol flags: the eight is_* bits, read with plain
     /// loads and written through &mut without an atomic operation, plus
     /// the MARK bit that parallel passes set with a compare-and-swap
@@ -78,7 +78,7 @@ pub struct Symbol {
 }
 
 // Symbol is loaded in every resolution and layout scan, so its width
-// is kept minimal. mold-rust's is 48 with more fields (a version index,
+// is kept minimal. mold's is 48 with more fields (a version index,
 // a symbol index); ours packs the same way and lands at 40.
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<Symbol>() == 40);
@@ -135,7 +135,7 @@ const F_PRIVATE_EXTERN: u16 = 1 << 4;
 const F_WEAK_REF: u16 = 1 << 5;
 const F_NO_DEAD_STRIP: u16 = 1 << 6;
 const F_COMMON: u16 = 1 << 7;
-/// Set by mark(), a transient per-pass flag (mold-rust's IS_MARKED).
+/// Set by mark(), a transient per-pass flag (mold's IS_MARKED).
 const F_MARK: u16 = 1 << 8;
 /// Referenced non-weakly by some object: with ld64's default
 /// -weak_reference_mismatches non-weak, that makes the import strong
@@ -253,7 +253,7 @@ pub const NO_IDX: u32 = u32::MAX;
 /// A symbol's synthetic-slot indices (__stubs, __got, __thread_ptrs,
 /// __objc_stubs), each `NO_IDX` when absent. Only the few symbols that
 /// take a slot ever have one, so these live in a side table indexed by
-/// SymbolId - mold-rust's SymbolAux - keeping Symbol itself small, as
+/// SymbolId - mold's SymbolAux - keeping Symbol itself small, as
 /// it is loaded in every symbol scan.
 #[derive(Clone, Debug)]
 pub struct SymAux {
@@ -263,7 +263,7 @@ pub struct SymAux {
     pub objc_stub_idx: u32,
     /// The addresses of this symbol's range-extension thunk entries,
     /// sorted, so that applying an out-of-range branch can find the one
-    /// within reach - mold-rust's SymbolAux::thunk_addrs.
+    /// within reach - mold's SymbolAux::thunk_addrs.
     pub thunk_addrs: Vec<u64>,
 }
 
@@ -335,7 +335,7 @@ fn shard_of(hash: u64) -> usize {
 }
 
 /// A map key that hashes by its precomputed hash and compares by the
-/// name, as in mold-rust.
+/// name, as in mold.
 #[derive(Clone, Copy, Debug)]
 struct Key {
     hash: u64,

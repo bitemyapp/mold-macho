@@ -61,7 +61,7 @@ pub struct ChunkHeader {
     pub is_sect: bool,
     /// The 1-based ordinal of the section among the output's sections
     /// (what an nlist's n_sect holds), 0 for a chunk that is not a
-    /// section; mold-rust's shndx.
+    /// section; mold's shndx.
     pub n_sect: u8,
 }
 
@@ -184,7 +184,7 @@ impl ChunkId {
 
     /// The id as one u32 (never u32::MAX), for InputSection, whose
     /// size counts: the top two bits say which of the three shapes it
-    /// is, the rest holds the index. mold-rust's InputSection stores an
+    /// is, the rest holds the index. mold's InputSection stores an
     /// Option<OutputSectionId>, a word too, since an ELF subsection
     /// only ever lands in an output section; a Mach-O subsection may
     /// also stand for a GOT slot or a rewritten method list.
