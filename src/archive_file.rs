@@ -14,7 +14,7 @@ use crate::mapped_file::MappedFile;
 /// a name of "#1/<len>" means the real name is the first <len> bytes of
 /// the member data.
 pub fn read_archive_members(mf: &'static MappedFile) -> Vec<&'static MappedFile> {
-    let data = mf.data;
+    let data = mf.data();
     let mut members = Vec::new();
     let mut off = 8;
 
@@ -45,7 +45,7 @@ pub fn read_archive_members(mf: &'static MappedFile) -> Vec<&'static MappedFile>
 
         if !name.starts_with("__.SYMDEF") {
             let full_name = format!("{}({})", mf.name, name);
-            members.push(mf.slice(full_name, &data[body..body + body_size]));
+            members.push(mf.slice(full_name, body, body_size));
         }
 
         off += 60 + size;

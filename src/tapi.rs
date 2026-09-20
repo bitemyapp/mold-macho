@@ -385,7 +385,7 @@ pub fn parse_version(val: &str) -> u32 {
 pub fn parse_cached(mf: &'static MappedFile, arch: &'static str) -> TbdFile {
     static CACHE: std::sync::Mutex<Option<hashbrown::HashMap<(usize, &'static str), TbdFile>>> =
         std::sync::Mutex::new(None);
-    let key = (mf.data.as_ptr() as usize, arch);
+    let key = (mf.data().as_ptr() as usize, arch);
     if let Some(tbd) = CACHE.lock().unwrap().get_or_insert_with(hashbrown::HashMap::new).get(&key) {
         return tbd.clone();
     }
@@ -401,7 +401,7 @@ pub fn prefetch(mfs: &[&'static MappedFile], arch: &'static str) -> Vec<TbdFile>
 }
 
 pub fn parse(mf: &MappedFile, arch: &str) -> TbdFile {
-    let Ok(text): Result<&'static str, _> = std::str::from_utf8(mf.data) else {
+    let Ok(text): Result<&'static str, _> = std::str::from_utf8(mf.data()) else {
         fatal!("{}: invalid UTF-8 in .tbd file", mf.name);
     };
 

@@ -345,7 +345,7 @@ pub fn stage_object<E: Target>(
     priority: u32,
     keep_all_fdes: bool,
 ) -> StagedObject {
-    let data = mf.data;
+    let data = mf.data();
     let hdr = MachHeader::read_from(data);
 
     if hdr.cputype != E::CPUTYPE {
@@ -1095,7 +1095,7 @@ pub fn parse_bitcode<E: Target>(
     alive: bool,
 ) -> usize {
     let plugin = ensure_lto_plugin(ctx);
-    let (module, lsyms) = crate::lto::parse_module(&plugin, mf.data, &mf.name);
+    let (module, lsyms) = crate::lto::parse_module(&plugin, mf.data(), &mf.name);
 
     let obj_idx = ctx.objs.len();
     let mut syms = Vec::new();
@@ -1682,7 +1682,7 @@ fn parse_eh_frame<E: Target>(
 /// exported from the app's debug dylib) is only linked by this rule.
 /// An __objc_imageinfo alone does not qualify.
 pub fn has_objc_sections(mf: &MappedFile) -> bool {
-    let data = mf.data;
+    let data = mf.data();
     if data.len() < size_of::<MachHeader>() {
         return false;
     }
@@ -1715,7 +1715,7 @@ pub fn has_objc_sections(mf: &MappedFile) -> bool {
 /// Returns the slice of a fat (universal) file matching the target's CPU
 /// type. Fat headers are big-endian.
 pub fn get_fat_slice<E: Target>(mf: &'static MappedFile) -> &'static MappedFile {
-    let data = mf.data;
+    let data = mf.data();
     let read_be32 = |off: usize| u32::from_be_bytes(data[off..off + 4].try_into().unwrap());
 
     let nfat_arch = read_be32(4) as usize;
@@ -1725,7 +1725,7 @@ pub fn get_fat_slice<E: Target>(mf: &'static MappedFile) -> &'static MappedFile 
             let obj_off = read_be32(off + 8) as usize;
             let obj_size = read_be32(off + 12) as usize;
             let name = format!("{}(for architecture {})", mf.name, E::NAME);
-            return mf.slice(name, &data[obj_off..obj_off + obj_size]);
+            return mf.slice(name, obj_off, obj_size);
         }
     }
     fatal!("{}: fat file does not contain {}", mf.name, E::NAME);
@@ -1850,11 +1850,11 @@ fn load_reexports<E: Target>(
 /// Check binary dependencies, including private reexports whose symbols
 /// are merged into their parent's export set instead of a DylibFile.
 fn check_dylib_versions<E: Target>(ctx: &Context<E>, mf: &MappedFile) {
-    let hdr = MachHeader::read_from(mf.data);
+    let hdr = MachHeader::read_from(mf.data());
     let mut versions = Vec::new();
     let mut off = size_of::<MachHeader>();
     for _ in 0..hdr.ncmds {
-        let data = &mf.data[off..];
+        let data = &mf.data()[off..];
         let lc = LoadCommand::read_from(data);
         if matches!(
             lc.cmd,
@@ -1892,7 +1892,7 @@ fn check_dylib_versions<E: Target>(ctx: &Context<E>, mf: &MappedFile) {
 
 pub fn parse_dylib_binary<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
     check_dylib_versions(ctx, mf);
-    let data = mf.data;
+    let data = mf.data();
     let hdr = MachHeader::read_from(data);
 
     let mut install_name = String::new();
@@ -2153,7 +2153,7 @@ fn export_trie_entries(data: &[u8], off: usize, size: usize) -> Vec<(&'static st
 /// table's defined externals and the export trie (Xcode's test hosts
 /// are linked with -export_dynamic, and an executable may be stripped).
 pub fn parse_bundle_loader<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
-    let data = mf.data;
+    let data = mf.data();
     let hdr = MachHeader::read_from(data);
     if hdr.magic != MH_MAGIC_64 || hdr.filetype != MH_EXECUTE {
         fatal!("{}: -bundle_loader is not an executable", mf.name);
@@ -2239,7 +2239,7 @@ pub fn parse_bundle_loader<E: Target>(ctx: &mut Context<E>, mf: &'static MappedF
 fn dylib_binary_exports(
     mf: &'static MappedFile,
 ) -> (Vec<&'static str>, Vec<&'static str>, Vec<String>, Vec<String>) {
-    let data = mf.data;
+    let data = mf.data();
     let hdr = MachHeader::read_from(data);
     let mut symtab_cmd = None;
     let mut dysymtab_cmd = None;

@@ -33,7 +33,7 @@ pub fn get_macho_target(data: &[u8]) -> Option<&'static str> {
 }
 
 pub fn get_file_type(mf: &MappedFile) -> FileType {
-    let data = mf.data;
+    let data = mf.data();
     if data.is_empty() {
         return FileType::Empty;
     }

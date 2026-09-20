@@ -43,7 +43,7 @@ fn detect_target(args: &cmdline::Args) -> &'static str {
     for input in &args.inputs {
         if let InputArg::File(path) = input
             && let Some(mf) = MappedFile::open(Path::new(path))
-            && let Some(name) = crate::filetype::get_macho_target(mf.data)
+            && let Some(name) = crate::filetype::get_macho_target(mf.data())
         {
             return name;
         }

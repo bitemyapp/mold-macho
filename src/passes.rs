@@ -4433,7 +4433,7 @@ pub fn plan_object_stabs<E: Target>(
     // takes an N_SO with an empty name as the closing one, so a -r
     // output without them crashed it. N_OSO then points at the
     // object (or "archive(member)"), as an absolute path.
-    let (dir, file) = match crate::dwarf::compile_unit_name(obj.mf.data, &obj.sect_hdrs) {
+    let (dir, file) = match crate::dwarf::compile_unit_name(obj.mf.data(), &obj.sect_hdrs) {
         Some((dir, file)) => (dir, file),
         None => (String::new(), obj.mf.name.rsplit('/').next().unwrap_or("").to_string()),
     };
