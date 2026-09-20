@@ -197,8 +197,7 @@ fn collect_file<E: Target>(
             // -force_load make every member live up front; -ObjC does
             // so for members with Objective-C metadata, which register
             // classes by their mere presence.
-            let members = crate::archive_file::read_archive_members(mf);
-            for member in members {
+            for member in crate::archive_file::read_archive_members(mf) {
                 let alive = force_load
                     || ctx.args.all_load
                     || (ctx.args.load_objc && input_files::has_objc_sections(member));

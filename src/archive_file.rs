@@ -1,55 +1,134 @@
-//! Static archive (.a) reading, mirroring mold-rust's archive_file.rs.
+//! This file contains functions to read an archive file (.a file).
+//! An archive file is just a bundle of object files. It's similar to
+//! tar or zip, but the contents are not compressed.
 //!
-//! A Mach-O archive is the common ar format: a "!<arch>\n" magic, then
-//! 60-byte member headers. Apple's ar uses the BSD long-name
-//! convention - a member name of "#1/<len>" means the real name is the
-//! first <len> bytes of the member body - and prepends a __.SYMDEF
-//! index member, which a linker that parses every member eagerly can
-//! simply skip.
+//! If an archive file is given to the linker, the linker pulls out
+//! object files that are needed to resolve undefined symbols. So,
+//! bunding object files as an archive and giving that archive to the
+//! linker has a different meaning than directly giving the same set of
+//! object files to the linker. The former links only needed object
+//! files, while the latter links all the given object files.
+//!
+//! A Mach-O archive is the common ar format. Apple's ar uses the BSD
+//! long-name convention - a member name of "#1/<len>" means the real
+//! name is the first <len> bytes of the member body - and prepends a
+//! __.SYMDEF index member, which a linker that parses every member
+//! eagerly can simply skip. GNU ar's SysV long names are accepted too.
 
-use crate::fatal;
 use crate::mapped_file::MappedFile;
 
-/// Splits an archive into its members. Members use the BSD convention:
-/// a name of "#1/<len>" means the real name is the first <len> bytes of
-/// the member data.
-pub fn read_archive_members(mf: &'static MappedFile) -> Vec<&'static MappedFile> {
-    let data = mf.data();
-    let mut members = Vec::new();
-    let mut off = 8;
+const HEADER_SIZE: usize = 60;
 
-    while off + 60 <= data.len() {
-        let hdr = &data[off..off + 60];
-        let field = |range: std::ops::Range<usize>| {
-            std::str::from_utf8(&hdr[range]).unwrap_or("").trim_end().to_string()
-        };
-        let name = field(0..16);
-        let Ok(size) = field(48..58).parse::<usize>() else {
-            fatal!("{}: malformed archive member header", mf.name);
-        };
+/// A parsed archive member header.
+struct ArHeader<'a> {
+    name: &'a [u8],
+    size: usize,
+}
 
-        let mut body = off + 60;
-        let mut body_size = size;
-        let name = if let Some(len) = name.strip_prefix("#1/") {
-            let Ok(len) = len.parse::<usize>() else {
-                fatal!("{}: malformed archive member name", mf.name);
-            };
-            let raw = &data[body..body + len];
-            body += len;
-            body_size -= len;
-            let end = raw.iter().position(|&b| b == 0).unwrap_or(len);
-            String::from_utf8_lossy(&raw[..end]).into_owned()
-        } else {
-            name
-        };
+impl<'a> ArHeader<'a> {
+    fn parse(bytes: &'a [u8]) -> Option<Self> {
+        let bytes = bytes.get(..HEADER_SIZE)?;
+        let size = parse_decimal(&bytes[48..58]);
+        Some(ArHeader { name: &bytes[..16], size })
+    }
 
-        if !name.starts_with("__.SYMDEF") {
-            let full_name = format!("{}({})", mf.name, name);
-            members.push(mf.slice(full_name, body, body_size));
+    fn is_strtab(&self) -> bool {
+        self.name.starts_with(b"// ")
+    }
+
+    fn is_symtab(&self) -> bool {
+        self.name.starts_with(b"/ ") || self.name.starts_with(b"/SYM64/ ")
+    }
+
+    /// Returns the member's file name. A BSD-style long name is stored
+    /// right after the header, so `body` is advanced past it.
+    fn read_name(&self, strtab: &[u8], body: &mut &'a [u8]) -> String {
+        // BSD-style long filename
+        if let Some(rest) = self.name.strip_prefix(b"#1/") {
+            let len = parse_decimal(rest);
+            let (name, remaining) = body.split_at(len.min(body.len()));
+            *body = remaining;
+            let name = name.split(|&b| b == 0).next().unwrap_or(&[]);
+            return String::from_utf8_lossy(name).into_owned();
         }
 
-        off += 60 + size;
-        off += off & 1; // members are aligned to even offsets
+        // SysV-style long filename
+        if let Some(rest) = self.name.strip_prefix(b"/") {
+            let offset = parse_decimal(rest);
+            let start = strtab.get(offset..).unwrap_or(&[]);
+            let end = memchr::memmem::find(start, b"/\n").unwrap_or(start.len());
+            return String::from_utf8_lossy(&start[..end]).into_owned();
+        }
+
+        // Short filename, space-padded and (in the SysV form) slash-terminated.
+        let end = self.name.iter().position(|&b| b == b'/').unwrap_or(self.name.len());
+        String::from_utf8_lossy(self.name[..end].trim_ascii_end()).into_owned()
     }
-    members
+}
+
+/// Parses the leading decimal digits of a field, like `atoi`.
+fn parse_decimal(bytes: &[u8]) -> usize {
+    bytes
+        .iter()
+        .skip_while(|b| b.is_ascii_whitespace())
+        .take_while(|b| b.is_ascii_digit())
+        .fold(0, |acc, &b| acc * 10 + (b - b'0') as usize)
+}
+
+/// Iterates over the members of an archive as (name, body) pairs, skipping
+/// the symbol table and string table.
+fn archive_members(mf: &'static MappedFile) -> impl Iterator<Item = (String, &'static [u8])> {
+    let data = mf.data();
+    let mut pos = 8;
+    let mut strtab: &'static [u8] = &[];
+
+    std::iter::from_fn(move || {
+        loop {
+            if data.len() - pos < 2 {
+                return None;
+            }
+
+            // Each header is aligned to a 2 byte boundary.
+            if pos % 2 != 0 {
+                pos += 1;
+            }
+
+            let hdr = ArHeader::parse(&data[pos..])?;
+            let body_start = pos + HEADER_SIZE;
+            let body_end = (body_start + hdr.size).min(data.len());
+            let mut body = &data[body_start..body_end];
+            pos = body_end;
+
+            // Read a string table.
+            if hdr.is_strtab() {
+                strtab = body;
+                continue;
+            }
+            // Skip a symbol table.
+            if hdr.is_symtab() {
+                continue;
+            }
+
+            // Read the name field
+            let name = hdr.read_name(strtab, &mut body);
+
+            // Skip BSD archive symbol tables (__.SYMDEF, __.SYMDEF SORTED,
+            // __.SYMDEF_64 ...).
+            if name.starts_with("__.SYMDEF") {
+                continue;
+            }
+
+            return Some((name, body));
+        }
+    })
+}
+
+/// Opens members as they are consumed. A member is named
+/// "archive(member)", as ld64 reports it.
+pub fn read_archive_members(mf: &'static MappedFile) -> impl Iterator<Item = &'static MappedFile> {
+    debug_assert!(mf.data().starts_with(b"!<arch>\n"));
+    let base = mf.data().as_ptr() as usize;
+    archive_members(mf).map(move |(name, body)| {
+        mf.slice(format!("{}({})", mf.name, name), body.as_ptr() as usize - base, body.len())
+    })
 }
