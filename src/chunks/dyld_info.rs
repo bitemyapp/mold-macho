@@ -344,10 +344,10 @@ pub fn build_bind_info<E: Target>(ctx: &Context<E>) -> Vec<u8> {
             {
                 continue;
             }
-            if let Some(id) = ctx.reloc_target_sym(isec.file as usize, rel) {
-                if ctx.symbols[id].is_imported() {
-                    binds.push((base + rel.offset as u64, id, rel.addend));
-                }
+            if let Some(id) = ctx.reloc_target_sym(isec.file as usize, rel)
+                && ctx.symbols[id].is_imported()
+            {
+                binds.push((base + rel.offset as u64, id, rel.addend));
             }
         }
     }
@@ -453,10 +453,10 @@ pub fn build_weak_bind_info<E: Target>(ctx: &Context<E>) -> Vec<u8> {
             {
                 continue;
             }
-            if let Some(id) = ctx.reloc_target_sym(isec.file as usize, rel) {
-                if ctx.binds_weak_lookup(id) {
-                    binds.push((id, base + rel.offset as u64));
-                }
+            if let Some(id) = ctx.reloc_target_sym(isec.file as usize, rel)
+                && ctx.binds_weak_lookup(id)
+            {
+                binds.push((id, base + rel.offset as u64));
             }
         }
     }

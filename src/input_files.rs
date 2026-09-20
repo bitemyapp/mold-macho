@@ -325,14 +325,13 @@ impl StagedObject {
 /// and the split is used only if it really is partitioned.
 fn first_global_of(nlists: &[NList], dysym: Option<&DysymtabCommand>) -> Option<u32> {
     let n = nlists.len() as u32;
-    if let Some(d) = dysym {
-        if d.ilocalsym == 0
-            && d.iextdefsym == d.nlocalsym
-            && d.iundefsym == d.iextdefsym + d.nextdefsym
-            && d.iundefsym + d.nundefsym == n
-        {
-            return Some(d.iextdefsym);
-        }
+    if let Some(d) = dysym
+        && d.ilocalsym == 0
+        && d.iextdefsym == d.nlocalsym
+        && d.iundefsym == d.iextdefsym + d.nextdefsym
+        && d.iundefsym + d.nundefsym == n
+    {
+        return Some(d.iextdefsym);
     }
     let is_local = |nl: &NList| nl.is_stab() || !nl.is_extern();
     let first = nlists.iter().position(|nl| !is_local(nl)).unwrap_or(nlists.len());
@@ -465,10 +464,9 @@ pub fn stage_object<E: Target>(
                 && nlist.n_type() == N_SECT
                 && nlist.n_desc & N_ALT_ENTRY == 0
                 && nlist.n_sect >= 1
+                && let Some(points) = split_points.get_mut(nlist.n_sect as usize - 1)
             {
-                if let Some(points) = split_points.get_mut(nlist.n_sect as usize - 1) {
-                    points.push(nlist.n_value);
-                }
+                points.push(nlist.n_value);
             }
         }
     }
@@ -2344,10 +2342,10 @@ fn dylib_binary_exports(
 /// carry the "(for architecture ...)" suffix the loader adds.
 fn dir_of(path: &str) -> String {
     let path = path.split_once("(for architecture").map_or(path, |(p, _)| p);
-    if let Ok(real) = std::fs::canonicalize(path) {
-        if let Some(dir) = real.parent() {
-            return dir.to_string_lossy().into_owned();
-        }
+    if let Ok(real) = std::fs::canonicalize(path)
+        && let Some(dir) = real.parent()
+    {
+        return dir.to_string_lossy().into_owned();
     }
     match path.rsplit_once('/') {
         Some((dir, _)) => dir.to_string(),
@@ -2452,23 +2450,22 @@ fn interpret_ld_symbols<E: Target>(ctx: &Context<E>, tbd: &mut tapi::TbdFile) {
                 install_name = Some(f[0].to_string());
             }
         } else if let Some(rest) = name.strip_prefix("$ld$add$os") {
-            if let Some((ver, sym)) = rest.split_once('$') {
-                if tapi::parse_version(ver) == minos {
-                    added.push(sym);
-                }
+            if let Some((ver, sym)) = rest.split_once('$')
+                && tapi::parse_version(ver) == minos
+            {
+                added.push(sym);
             }
         } else if let Some(rest) = name.strip_prefix("$ld$hide$os") {
-            if let Some((ver, sym)) = rest.split_once('$') {
-                if tapi::parse_version(ver) == minos {
-                    hidden.insert(sym);
-                }
+            if let Some((ver, sym)) = rest.split_once('$')
+                && tapi::parse_version(ver) == minos
+            {
+                hidden.insert(sym);
             }
-        } else if let Some(rest) = name.strip_prefix("$ld$install_name$os") {
-            if let Some((ver, new_name)) = rest.split_once('$') {
-                if tapi::parse_version(ver) == minos {
-                    install_name = Some(new_name.to_string());
-                }
-            }
+        } else if let Some(rest) = name.strip_prefix("$ld$install_name$os")
+            && let Some((ver, new_name)) = rest.split_once('$')
+            && tapi::parse_version(ver) == minos
+        {
+            install_name = Some(new_name.to_string());
         }
     }
 

@@ -83,11 +83,11 @@ fn build_trie(names: &[(&'static str, Export)], depth: usize) -> TrieNode {
     use rayon::prelude::*;
     let mut node = TrieNode::default();
     let mut rest = names;
-    if let Some(&(name, export)) = rest.first() {
-        if name.len() == depth {
-            node.export = Some(export);
-            rest = &rest[1..];
-        }
+    if let Some(&(name, export)) = rest.first()
+        && name.len() == depth
+    {
+        node.export = Some(export);
+        rest = &rest[1..];
     }
     let mut groups: Vec<&[(&'static str, Export)]> = Vec::new();
     while let Some(&(first, _)) = rest.first() {
@@ -147,10 +147,10 @@ pub fn encode_export_trie<E: Target>(ctx: &Context<E>, sorted_globals: &[SymbolI
             let same_name = target.is_some_and(|t| ctx.symbols[t].name() == sym.name());
             // Explicit reexports survive restrictions on local exports.
             if !same_name {
-                if let Some(exported) = &ctx.args.exported_symbols {
-                    if !exported.iter().any(|pat| pat == sym.name()) {
-                        return None;
-                    }
+                if let Some(exported) = &ctx.args.exported_symbols
+                    && !exported.iter().any(|pat| pat == sym.name())
+                {
+                    return None;
                 }
                 if ctx.args.unexported_symbols.iter().any(|pat| pat == sym.name()) {
                     return None;

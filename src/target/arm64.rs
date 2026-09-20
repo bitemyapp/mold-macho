@@ -244,15 +244,15 @@ impl Target for Arm64 {
                             continue;
                         }
                         let base = adrp_target(a, locs[0].1) + ((d >> 10) & 0xfff) as u64;
-                        if let Some(size) = ldr_size(l) {
-                            if (l >> 5) & 0x1f == d & 0x1f {
-                                let target = base + (((l >> 10) & 0xfff) as u64) * size;
-                                if size == 8 && target % 4 == 0 && in_adr_range(target, locs[2].1) {
-                                    put(buf, 0, NOP);
-                                    put(buf, 1, NOP);
-                                    put(buf, 2, make_ldr_lit(target, locs[2].1, l & 0x1f, size));
-                                    continue;
-                                }
+                        if let Some(size) = ldr_size(l)
+                            && (l >> 5) & 0x1f == d & 0x1f
+                        {
+                            let target = base + (((l >> 10) & 0xfff) as u64) * size;
+                            if size == 8 && target % 4 == 0 && in_adr_range(target, locs[2].1) {
+                                put(buf, 0, NOP);
+                                put(buf, 1, NOP);
+                                put(buf, 2, make_ldr_lit(target, locs[2].1, l & 0x1f, size));
+                                continue;
                             }
                         }
                         if in_adr_range(base, locs[1].1) {
