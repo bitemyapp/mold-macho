@@ -6,7 +6,7 @@ use crate::chunks::{ChunkHeader, segment_and_offset};
 use crate::context::Context;
 use crate::macho::*;
 use crate::target::{RelocClass, Target};
-use crate::util::write_uleb;
+use crate::util::encode_uleb;
 
 /// The weak-bind opcode stream: the slots dyld redirects when another
 /// image's copy of one of this image's weak definitions wins
@@ -100,7 +100,7 @@ pub fn build<E: Target>(ctx: &Context<E>) -> Vec<u8> {
         }
         let (seg, off) = segment_and_offset(ctx, addr);
         buf.push(BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | seg as u8);
-        write_uleb(&mut buf, off);
+        encode_uleb(&mut buf, off);
         buf.push(BIND_OPCODE_DO_BIND);
     }
     buf.push(BIND_OPCODE_DONE);

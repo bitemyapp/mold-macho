@@ -399,7 +399,7 @@ impl Target for Arm64 {
                     }
                 }
                 ARM64_RELOC_ADDEND => {
-                    addend = sign_extend(rels[i].r_symbolnum() as u64, 23);
+                    addend = sign_extend(rels[i].r_symbolnum() as u64, 24);
                     i += 1;
                 }
                 _ => {}

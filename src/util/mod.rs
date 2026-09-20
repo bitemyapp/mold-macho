@@ -4,11 +4,15 @@ pub mod demangle;
 pub mod glob;
 pub mod perf;
 
-/// Rounds `val` up to the next multiple of `align`. `align` must be a
-/// power of two.
-pub fn align_to(val: u64, align: u64) -> u64 {
+/// Rounds `value` up to a multiple of `align`, which must be zero or a power
+/// of two. Zero means "no alignment".
+#[inline]
+pub fn align_to(value: u64, align: u64) -> u64 {
+    if align == 0 {
+        return value;
+    }
     debug_assert!(align.is_power_of_two());
-    (val + align - 1) & !(align - 1)
+    (value + align - 1) & !(align - 1)
 }
 
 /// Rounds `val` up to the next value congruent to `modulus` modulo
@@ -21,15 +25,16 @@ pub fn align_to_mod(val: u64, align: u64, modulus: u64) -> u64 {
     if val <= modulus { modulus } else { align_to(val - modulus, align) + modulus }
 }
 
-/// Returns the bit field of `val` from bit `hi` down to bit `lo`,
-/// inclusive.
-pub fn bits(val: u64, hi: u32, lo: u32) -> u64 {
-    (val >> lo) & ((1 << (hi - lo + 1)) - 1)
+// Returns [hi:lo] bits of val.
+#[inline]
+pub fn bits(value: u64, hi: u32, lo: u32) -> u64 {
+    (value >> lo) & ((1u64 << (hi - lo + 1)) - 1)
 }
 
-/// Sign-extends a value whose sign bit is bit `n`.
-pub fn sign_extend(val: u64, n: u32) -> i64 {
-    ((val << (63 - n)) as i64) >> (63 - n)
+// Cast val to a signed N bit integer.
+// For example, sign_extend(x, 32) == (i32)x for any integer x.
+pub fn sign_extend(value: u64, n: u32) -> i64 {
+    ((value << (64 - n)) as i64) >> (64 - n)
 }
 
 /// A sort key that orders strings like the strings themselves but
@@ -47,28 +52,30 @@ pub fn name_sort_key(name: &str) -> (u64, &str) {
     (u64::from_be_bytes(p), name)
 }
 
-/// Appends a ULEB128-encoded value.
-pub fn write_sleb(buf: &mut Vec<u8>, mut val: i64) {
+/// Appends `value` in unsigned LEB128 encoding.
+pub fn encode_uleb(out: &mut Vec<u8>, mut value: u64) {
     loop {
-        let byte = (val & 0x7f) as u8;
-        val >>= 7;
-        let done = (val == 0 && byte & 0x40 == 0) || (val == -1 && byte & 0x40 != 0);
-        buf.push(if done { byte } else { byte | 0x80 });
-        if done {
+        let byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value == 0 {
+            out.push(byte);
             return;
         }
+        out.push(byte | 0x80);
     }
 }
 
-pub fn write_uleb(buf: &mut Vec<u8>, mut val: u64) {
+/// Appends `value` in signed LEB128 encoding.
+pub fn encode_sleb(out: &mut Vec<u8>, mut value: i64) {
     loop {
-        let byte = (val & 0x7f) as u8;
-        val >>= 7;
-        if val == 0 {
-            buf.push(byte);
+        let byte = (value & 0x7f) as u8;
+        value >>= 7;
+        let negative = byte & 0x40 != 0;
+        if (value == 0 && !negative) || (value == -1 && negative) {
+            out.push(byte);
             return;
         }
-        buf.push(byte | 0x80);
+        out.push(byte | 0x80);
     }
 }
 

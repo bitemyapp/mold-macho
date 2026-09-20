@@ -6,7 +6,7 @@ use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
 use crate::target::Target;
-use crate::util::write_uleb;
+use crate::util::encode_uleb;
 
 /// The lazy-bind opcode stream: one record per lazy pointer, entered
 /// by its stub helper on first call.
@@ -56,7 +56,7 @@ pub fn build<E: Target>(ctx: &Context<E>) -> (Vec<u8>, Vec<u32>) {
         let addr = ctx.stub_ptr_addr(i, id);
         let (seg, off) = segment_and_offset(ctx, addr);
         buf.push(BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | seg as u8);
-        write_uleb(&mut buf, off);
+        encode_uleb(&mut buf, off);
         let sym = &ctx.symbols[id];
         let Some(FileId::Dylib(dylib)) = sym.file() else { unreachable!() };
         let ordinal = ctx.bind_ordinal(dylib);
@@ -66,7 +66,7 @@ pub fn build<E: Target>(ctx: &Context<E>) -> (Vec<u8>, Vec<u32>) {
             buf.push(BIND_OPCODE_SET_DYLIB_ORDINAL_IMM | ordinal as u8);
         } else {
             buf.push(BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB);
-            write_uleb(&mut buf, ordinal as u64);
+            encode_uleb(&mut buf, ordinal as u64);
         }
         let flags = if sym.is_weak_ref() { BIND_SYMBOL_FLAGS_WEAK_IMPORT } else { 0 };
         buf.push(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM | flags);

@@ -5,7 +5,7 @@ use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::target::Target;
-use crate::util::write_uleb;
+use crate::util::encode_uleb;
 
 /// LC_FUNCTION_STARTS data: delta-encoded function addresses, used by
 /// debuggers and crash reporters.
@@ -70,7 +70,7 @@ pub fn build<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let mut buf = Vec::new();
     let mut last = ctx.args.pagezero_size;
     for addr in addrs {
-        write_uleb(&mut buf, addr - last);
+        encode_uleb(&mut buf, addr - last);
         last = addr;
     }
     buf.push(0);

@@ -6,7 +6,7 @@ use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
 use crate::target::{RelocClass, Target};
-use crate::util::write_uleb;
+use crate::util::encode_uleb;
 
 /// The bind opcode stream: every slot dyld fills with an import.
 #[derive(Debug)]
@@ -103,7 +103,7 @@ pub fn build<E: Target>(ctx: &Context<E>) -> Vec<u8> {
             buf.push(BIND_OPCODE_SET_DYLIB_ORDINAL_IMM | ordinal as u8);
         } else {
             buf.push(BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB);
-            write_uleb(&mut buf, ordinal as u64);
+            encode_uleb(&mut buf, ordinal as u64);
         }
         let flags = if sym.is_weak_ref() { BIND_SYMBOL_FLAGS_WEAK_IMPORT } else { 0 };
         buf.push(BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM | flags);
@@ -114,12 +114,12 @@ pub fn build<E: Target>(ctx: &Context<E>) -> Vec<u8> {
         // BIND opcodes, so emit SET_ADDEND_SLEB only on change.
         if addend != last_addend {
             buf.push(BIND_OPCODE_SET_ADDEND_SLEB);
-            crate::util::write_sleb(&mut buf, addend);
+            crate::util::encode_sleb(&mut buf, addend);
             last_addend = addend;
         }
         let (seg, off) = segment_and_offset(ctx, addr);
         buf.push(BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | seg as u8);
-        write_uleb(&mut buf, off);
+        encode_uleb(&mut buf, off);
         buf.push(BIND_OPCODE_DO_BIND);
     }
 

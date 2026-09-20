@@ -6,7 +6,7 @@ use crate::context::Context;
 use crate::macho::*;
 use crate::passes::{DataField, objc_ref_addr};
 use crate::target::{RelocClass, Target};
-use crate::util::write_uleb;
+use crate::util::encode_uleb;
 
 /// The rebase opcode stream: every pointer dyld slides.
 #[derive(Debug)]
@@ -134,12 +134,12 @@ pub fn build<E: Target>(ctx: &Context<E>) -> Vec<u8> {
             Some((cseg, coff)) if cseg == seg as u8 && off >= coff => {
                 if off > coff {
                     buf.push(REBASE_OPCODE_ADD_ADDR_ULEB);
-                    write_uleb(&mut buf, off - coff);
+                    encode_uleb(&mut buf, off - coff);
                 }
             }
             _ => {
                 buf.push(REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB | seg as u8);
-                write_uleb(&mut buf, off);
+                encode_uleb(&mut buf, off);
             }
         }
 
@@ -152,7 +152,7 @@ pub fn build<E: Target>(ctx: &Context<E>) -> Vec<u8> {
             buf.push(REBASE_OPCODE_DO_REBASE_IMM_TIMES | n as u8);
         } else {
             buf.push(REBASE_OPCODE_DO_REBASE_ULEB_TIMES);
-            write_uleb(&mut buf, n);
+            encode_uleb(&mut buf, n);
         }
         cur = Some((seg as u8, off + n * 8));
         i += n as usize;
