@@ -1713,7 +1713,7 @@ pub fn check_duplicate_symbols<E: Target>(ctx: &Context<E>) {
     for (sym_id, obj_idx) in duplicates {
         let prev = match ctx.symbols[sym_id].file() {
             Some(FileId::Obj(idx)) => file_display(&ctx.objs[idx as usize]),
-            _ => "?".to_string(),
+            _ => "?",
         };
         error!(
             "duplicate symbol: {}: {}: {}",
@@ -1745,7 +1745,7 @@ pub fn report_undef_errors<E: Target>(ctx: &mut Context<E>) {
             map
         });
         match map.get(&id) {
-            Some(&obj_idx) => file_display(&ctx.objs[obj_idx]),
+            Some(&obj_idx) => file_display(&ctx.objs[obj_idx]).to_string(),
             None => "<synthesized>".to_string(),
         }
     };
@@ -1799,7 +1799,7 @@ pub fn print_dependencies<E: Target>(ctx: &Context<E>) {
                     file_display(&ctx.objs[idx])
                 }
                 Some(FileId::Dylib(idx)) if idx != u32::MAX => {
-                    ctx.dylibs[idx as usize].install_name.clone()
+                    &ctx.dylibs[idx as usize].install_name
                 }
                 _ => continue,
             };
@@ -1850,8 +1850,8 @@ pub fn print_why_load<E: Target>(ctx: &Context<E>) {
 /// A file name for diagnostics: the object's path. Archive members
 /// already carry their "archive(member)" form as their mapped-file
 /// name.
-pub(crate) fn file_display(obj: &crate::input_files::ObjectFile) -> String {
-    obj.mf.name.clone()
+pub(crate) fn file_display(obj: &crate::input_files::ObjectFile) -> &str {
+    &obj.mf.name
 }
 
 /// Drops load commands for dylibs no symbol binds to
