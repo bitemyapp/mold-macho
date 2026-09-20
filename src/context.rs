@@ -90,14 +90,14 @@ pub struct Context<E: Target> {
     pub priority_counter: u32,
     /// Files already loaded, so a library named twice (command line
     /// plus auto-link) is read once.
-    pub visited_files: std::collections::HashSet<String>,
+    pub visited_files: std::collections::HashSet<std::path::PathBuf>,
     /// The loaded libLTO, once a bitcode input has been seen.
     pub lto_plugin: Option<crate::lto::Plugin>,
     /// Bitcode modules registered for LTO: the pseudo object index and
     /// the lto_module handle.
     pub lto_modules: Vec<(usize, usize)>,
     /// Auto-link options already acted on.
-    pub processed_linker_options: std::collections::HashSet<Vec<String>>,
+    pub processed_linker_options: std::collections::HashSet<Vec<Vec<u8>>>,
     /// Unwind records from all objects' __compact_unwind sections.
     pub unwind_records: Vec<crate::input_files::UnwindRecord>,
     /// DWARF CIEs and FDEs from all objects' __eh_frame sections.

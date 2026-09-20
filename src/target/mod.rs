@@ -12,6 +12,8 @@ mod x86_64;
 pub use arm64::Arm64;
 pub use x86_64::X86_64;
 
+use std::path::Path;
+
 use crate::context::Context;
 use crate::input_sections::Reloc;
 use crate::macho::{MachRel, MachSection};
@@ -116,7 +118,7 @@ pub trait Target: Copy + Default + Send + Sync + 'static {
     /// [`Reloc`]s. Mach-O encodes addends target-dependently: some are
     /// embedded in the relocated field, some are separate records.
     fn read_relocs(
-        file_name: &str,
+        file_name: &Path,
         sections: &[MachSection],
         hdr: &MachSection,
         file_data: &[u8],

@@ -2,11 +2,13 @@
 //! symbol ended up, in ld64's format.
 
 use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use crate::context::Context;
 use crate::fatal;
 use crate::input_files::FileId;
 use crate::target::Target;
+use crate::util::path_bytes;
 
 fn json_string(s: &str) -> String {
     use std::fmt::Write;
@@ -30,7 +32,7 @@ fn json_string(s: &str) -> String {
 pub fn write_sdk_imports<E: Target>(ctx: &Context<E>) {
     use crate::macho::{format_version, platform_name};
     let Some(path) = &ctx.args.sdk_imports else { return };
-    let mut imports = std::collections::BTreeMap::<&str, Vec<&str>>::new();
+    let mut imports = std::collections::BTreeMap::<&[u8], Vec<&str>>::new();
     for sym in &ctx.symbols.syms {
         if !sym.is_imported() || !sym.is_used() {
             continue;
@@ -46,10 +48,15 @@ pub fn write_sdk_imports<E: Target>(ctx: &Context<E>) {
             symbols.sort_unstable();
             symbols.dedup();
             let symbols: Vec<String> = symbols.into_iter().map(json_string).collect();
-            format!("{{\"installName\":{},\"symbols\":[{}]}}", json_string(name), symbols.join(","))
+            format!(
+                "{{\"installName\":{},\"symbols\":[{}]}}",
+                json_string(&crate::util::display(name)),
+                symbols.join(",")
+            )
         })
         .collect();
-    let output = json_string(&ctx.args.output);
+    // JSON is text: a path or install name outside UTF-8 is spelled lossily.
+    let output = json_string(&ctx.args.output.to_string_lossy());
     let report = format!(
         "{{\"version\":1,\"output\":{output},\"arch\":{},\"linker\":{},\"apiListVersion\":0,\
          \"platform\":{},\"deploymentVersion\":{},\"sdkVersion\":{},\
@@ -61,7 +68,7 @@ pub fn write_sdk_imports<E: Target>(ctx: &Context<E>) {
         json_string(&format_version(ctx.args.platform_sdk)),
         libraries.join(",")
     );
-    std::fs::write(path, report).unwrap_or_else(|e| fatal!("cannot write {path}: {e}"));
+    std::fs::write(path, report).unwrap_or_else(|e| fatal!("cannot write {}: {e}", path.display()));
 }
 
 /// Writes the -dependency_info file: Xcode's incremental build system
@@ -73,37 +80,41 @@ pub fn write_dependency_info<E: Target>(ctx: &Context<E>) {
     let Some(path) = &ctx.args.dependency_info else {
         return;
     };
-    let file = std::fs::File::create(path).unwrap_or_else(|e| fatal!("cannot open {path}: {e}"));
+    let file = std::fs::File::create(path)
+        .unwrap_or_else(|e| fatal!("cannot open {}: {e}", path.display()));
     let mut out = std::io::BufWriter::new(file);
-    let mut emit = |op: u8, s: &str| {
+    let mut emit = |op: u8, s: &[u8]| {
         let _ = out.write_all(&[op]);
-        let _ = out.write_all(s.as_bytes());
+        let _ = out.write_all(s);
         let _ = out.write_all(&[0]);
     };
 
-    emit(0x00, concat!("mold-macho ", env!("CARGO_PKG_VERSION")));
-    let mut inputs: Vec<&str> = ctx
+    emit(0x00, concat!("mold-macho ", env!("CARGO_PKG_VERSION")).as_bytes());
+    let mut inputs: Vec<&Path> = ctx
         .objs
         .iter()
         .enumerate()
         .filter(|(i, o)| o.is_alive && !ctx.is_internal(*i))
-        .map(|(_, o)| o.mf.parent.map(|p| p.name.as_str()).unwrap_or(o.mf.name.as_str()))
+        .map(|(_, o)| o.mf.parent.map_or(o.mf.name.as_path(), |p| p.name.as_path()))
         .collect();
-    inputs.extend(ctx.visited_files.iter().map(String::as_str));
+    inputs.extend(ctx.visited_files.iter().map(PathBuf::as_path));
     inputs.sort_unstable();
     inputs.dedup();
     for name in inputs {
-        emit(0x10, name);
+        emit(0x10, path_bytes(name));
     }
-    emit(0x40, &ctx.args.output);
+    emit(0x40, path_bytes(&ctx.args.output));
 }
 
 pub fn print_map<E: Target>(ctx: &Context<E>) {
     let Some(path) = &ctx.args.map else { return };
-    let file = std::fs::File::create(path).unwrap_or_else(|e| fatal!("cannot open {path}: {e}"));
+    let file = std::fs::File::create(path)
+        .unwrap_or_else(|e| fatal!("cannot open {}: {e}", path.display()));
     let mut out = std::io::BufWriter::new(file);
 
-    let _ = writeln!(out, "# Path: {}", ctx.args.output);
+    let _ = write!(out, "# Path: ");
+    let _ = out.write_all(path_bytes(&ctx.args.output));
+    let _ = writeln!(out);
     let _ = writeln!(out, "# Arch: {}", E::NAME);
 
     // ld64 reserves file number 0 for atoms the linker itself creates
@@ -116,7 +127,9 @@ pub fn print_map<E: Target>(ctx: &Context<E>) {
     for (i, obj) in ctx.objs.iter().enumerate() {
         if obj.is_alive && !ctx.is_internal(i) {
             file_no[i] = next;
-            let _ = writeln!(out, "[{next:3}] {}", obj.mf.name);
+            let _ = write!(out, "[{next:3}] ");
+            let _ = out.write_all(path_bytes(&obj.mf.name));
+            let _ = writeln!(out);
             next += 1;
         }
     }

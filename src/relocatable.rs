@@ -265,9 +265,9 @@ pub fn link<E: Target>(ctx: &mut Context<E>) {
     // The output symbol table: locals per object, then defined
     // externals, then undefineds, with an index map for relocations.
     let mut strtab: Vec<u8> = vec![b' ', 0];
-    let add_string = |strtab: &mut Vec<u8>, s: &str| -> u32 {
+    let add_string = |strtab: &mut Vec<u8>, s: &[u8]| -> u32 {
         let off = strtab.len() as u32;
-        strtab.extend_from_slice(s.as_bytes());
+        strtab.extend_from_slice(s);
         strtab.push(0);
         off
     };
@@ -302,8 +302,7 @@ pub fn link<E: Target>(ctx: &mut Context<E>) {
     // hold it (N_OSO) and where their symbols landed, and a later link
     // carries the notes through.
     if !ctx.args.strip_debug {
-        let cwd =
-            std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let cwd = std::env::current_dir().unwrap_or_default();
         for obj_idx in 0..ctx.objs.len() {
             for (name, mut ent, sym) in crate::passes::plan_object_stabs(ctx, obj_idx, &cwd) {
                 if let Some(id) = sym {
@@ -570,7 +569,7 @@ pub fn link<E: Target>(ctx: &mut Context<E>) {
             index_of_sym.insert(sym_id, symnum);
         }
         nlists_out.push(NList {
-            n_strx: add_string(&mut strtab, &l.name),
+            n_strx: add_string(&mut strtab, l.name.as_bytes()),
             n_type: l.n_type,
             n_sect: l.n_sect,
             n_desc: l.n_desc,
@@ -642,7 +641,7 @@ pub fn link<E: Target>(ctx: &mut Context<E>) {
         }
         index_of_sym.insert(i as u32, nlists_out.len() as u32);
         nlists_out.push(NList {
-            n_strx: add_string(&mut strtab, sym.name()),
+            n_strx: add_string(&mut strtab, sym.name().as_bytes()),
             n_type,
             n_sect,
             n_desc,
@@ -671,7 +670,7 @@ pub fn link<E: Target>(ctx: &mut Context<E>) {
         }
         index_of_sym.insert(i as u32, nlists_out.len() as u32);
         nlists_out.push(NList {
-            n_strx: add_string(&mut strtab, sym.name()),
+            n_strx: add_string(&mut strtab, sym.name().as_bytes()),
             n_type: N_UNDF | N_EXT,
             n_sect: 0,
             n_desc,
@@ -956,7 +955,7 @@ pub fn link<E: Target>(ctx: &mut Context<E>) {
     // Auto-link requests are not acted on in a -r link; each distinct
     // one is carried into the output as an LC_LINKER_OPTION command,
     // in first-seen order, for the final link to resolve.
-    let mut linker_options: Vec<&Vec<String>> = Vec::new();
+    let mut linker_options: Vec<&Vec<Vec<u8>>> = Vec::new();
     for obj in &ctx.objs {
         if !obj.is_alive {
             continue;
@@ -968,7 +967,7 @@ pub fn link<E: Target>(ctx: &mut Context<E>) {
         }
     }
     // cmd, cmdsize, count, then the NUL-terminated strings, padded to 8.
-    let linker_option_cmdsize = |opt: &Vec<String>| -> usize {
+    let linker_option_cmdsize = |opt: &Vec<Vec<u8>>| -> usize {
         align_to(12 + opt.iter().map(|s| s.len() + 1).sum::<usize>() as u64, 8) as usize
     };
 
@@ -1144,7 +1143,7 @@ pub fn link<E: Target>(ctx: &mut Context<E>) {
         buf[p + 8..p + 12].copy_from_slice(&(opt.len() as u32).to_le_bytes());
         let mut q = p + 12;
         for s in opt.iter() {
-            buf[q..q + s.len()].copy_from_slice(s.as_bytes());
+            buf[q..q + s.len()].copy_from_slice(s);
             q += s.len() + 1;
         }
         p += cmdsize;

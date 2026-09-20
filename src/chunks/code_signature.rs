@@ -1,6 +1,8 @@
 //! The ad-hoc code signature: SHA-256 page hashes in a code directory, the
 //! last chunk of the file.
 
+use std::path::Path;
+
 use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::macho::*;
@@ -27,7 +29,7 @@ impl Default for CodeSignatureSection {
 
 /// Returns the size of the code signature given the file offset it will
 /// be placed at.
-pub fn size(output: &str, fileoff: u64) -> u64 {
+pub fn size(output: &Path, fileoff: u64) -> u64 {
     let ident_size = align_to(file_basename(output).len() as u64 + 1, 16);
     let nblocks = fileoff.div_ceil(CS_PAGE_SIZE);
     // Superblob header, one blob index, the code directory, the
@@ -35,8 +37,9 @@ pub fn size(output: &str, fileoff: u64) -> u64 {
     12 + 8 + 88 + ident_size + nblocks * SHA256_SIZE as u64
 }
 
-fn file_basename(path: &str) -> &str {
-    path.rsplit('/').next().unwrap()
+/// The signature's identifier: the output's leaf name, as bytes.
+fn file_basename(path: &Path) -> &[u8] {
+    path.file_name().map_or(&[][..], |name| std::os::unix::ffi::OsStrExt::as_bytes(name))
 }
 
 fn push_be32(buf: &mut Vec<u8>, val: u32) {
@@ -129,7 +132,7 @@ pub fn write<E: Target>(ctx: &Context<E>, buf: &mut [u8], hashes: &[[u8; SHA256_
         if ctx.args.output_type == MH_EXECUTE { CS_EXECSEG_MAIN_BINARY } else { 0 };
     push_be64(&mut sig, exec_seg_flags); // exec segment flags
 
-    sig.extend_from_slice(ident.as_bytes());
+    sig.extend_from_slice(ident);
     sig.resize(sig.len() + ident_size as usize - ident.len(), 0);
 
     debug_assert_eq!(hashes.len() as u64, nblocks);

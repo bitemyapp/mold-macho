@@ -25,7 +25,7 @@
 use std::ffi::CString;
 use std::ops::Range;
 use std::os::unix::fs::{FileExt, PermissionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
@@ -98,7 +98,7 @@ const WRITERS: usize = 4;
 /// An output file being written by background threads while the buffer
 /// is finished.
 pub struct OutputFile {
-    path: String,
+    path: PathBuf,
     len: usize,
     tx: Option<Sender<(usize, usize)>>,
     threads: Vec<JoinHandle<Result<(), String>>>,
@@ -108,16 +108,16 @@ impl OutputFile {
     /// Creates the output file for the `len`-byte buffer at `buf` and
     /// starts the writers. The buffer must outlive the OutputFile, and a
     /// range must not be modified after it has been queued.
-    pub fn create(path: &str, buf: *const u8, len: usize) -> Self {
+    pub fn create(path: &Path, buf: *const u8, len: usize) -> Self {
         // Remove an existing file first. Overwriting a running
         // executable is an error on some systems, and on macOS the
         // kernel caches code signature state per vnode, so a fresh file
         // avoids stale-signature kills.
         let _ = std::fs::remove_file(path);
-        set_output_path(Some(Path::new(path)));
+        set_output_path(Some(path));
 
-        let file =
-            std::fs::File::create(path).unwrap_or_else(|e| fatal!("cannot write {path}: {e}"));
+        let file = std::fs::File::create(path)
+            .unwrap_or_else(|e| fatal!("cannot write {}: {e}", path.display()));
         let _ = file.set_len(len as u64);
         let file = Arc::new(file);
 
@@ -144,7 +144,7 @@ impl OutputFile {
             })
             .collect();
 
-        Self { path: path.to_string(), len, tx: Some(tx), threads }
+        Self { path: path.to_path_buf(), len, tx: Some(tx), threads }
     }
 
     /// Queues the buffer's bytes at `off..off + len` for writing. They
@@ -169,13 +169,13 @@ impl OutputFile {
         for thread in self.threads.drain(..) {
             match thread.join() {
                 Ok(Ok(())) => {}
-                Ok(Err(e)) => fatal!("cannot write {}: {e}", self.path),
-                Err(_) => fatal!("cannot write {}: writer thread panicked", self.path),
+                Ok(Err(e)) => fatal!("cannot write {}: {e}", self.path.display()),
+                Err(_) => fatal!("cannot write {}: writer thread panicked", self.path.display()),
             }
         }
         if let Err(e) = std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o755))
         {
-            fatal!("cannot chmod {}: {e}", self.path);
+            fatal!("cannot chmod {}: {e}", self.path.display());
         }
         set_output_path(None);
     }
@@ -183,7 +183,7 @@ impl OutputFile {
 
 /// Writes a complete buffer: for output that is built in full before
 /// anything can be written (-r).
-pub fn write(path: &str, buf: &[u8]) {
+pub fn write(path: &Path, buf: &[u8]) {
     let out = OutputFile::create(path, buf.as_ptr(), buf.len());
     out.queue(0, buf.len());
     out.finish();

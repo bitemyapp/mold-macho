@@ -1,5 +1,7 @@
 //! The ARM64 (AArch64) target.
 
+use std::path::Path;
+
 use crate::context::Context;
 use crate::error;
 use crate::fatal;
@@ -367,7 +369,7 @@ impl Target for Arm64 {
     }
 
     fn read_relocs(
-        file_name: &str,
+        file_name: &Path,
         sections: &[MachSection],
         hdr: &MachSection,
         file_data: &[u8],
@@ -377,6 +379,8 @@ impl Target for Arm64 {
         let mut i = 0;
 
         while i < rels.len() {
+            // Diagnostics spell the path lossily.
+            let file_name = file_name.display();
             let mut addend: i64 = 0;
 
             // A Mach-O relocation doesn't contain an addend. UNSIGNED
@@ -482,7 +486,7 @@ impl Target for Arm64 {
                         if val > u32::MAX as u64 {
                             fatal!(
                                 "{}: 32-bit absolute address out of range ({val:#x})",
-                                ctx.objs[obj].mf.name
+                                ctx.objs[obj].mf.name.display()
                             );
                         }
                         write32(loc, val as u32);

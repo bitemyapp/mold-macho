@@ -307,8 +307,8 @@ fn to_vec(record: &impl FileRecord) -> Vec<u8> {
 }
 
 /// Appends a NUL-terminated string, padding the command to 8 bytes.
-fn append_string(buf: &mut Vec<u8>, s: &str) {
-    buf.extend_from_slice(s.as_bytes());
+fn append_string(buf: &mut Vec<u8>, s: &[u8]) {
+    buf.extend_from_slice(s);
     buf.push(0);
     while !buf.len().is_multiple_of(8) {
         buf.push(0);
@@ -491,19 +491,19 @@ fn create_dylinker_cmd() -> Vec<u8> {
         nameoff: size_of::<DylinkerCommand>() as u32,
     };
     let mut buf = to_vec(&cmd);
-    append_string(&mut buf, "/usr/lib/dyld");
+    append_string(&mut buf, b"/usr/lib/dyld");
     let size = buf.len() as u32;
     buf[4..8].copy_from_slice(&size.to_le_bytes());
     buf
 }
 
 fn create_id_dylib_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
-    let name = ctx
+    let name: &[u8] = ctx
         .args
         .install_name
         .as_deref()
         .or(ctx.args.final_output.as_deref())
-        .unwrap_or(&ctx.args.output);
+        .unwrap_or(crate::util::path_bytes(&ctx.args.output));
     let cmd = DylibCommand {
         cmd: LC_ID_DYLIB,
         cmdsize: 0,
@@ -522,7 +522,7 @@ fn create_id_dylib_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
 // LC_RPATH and LC_SUB_FRAMEWORK share the layout of every
 // single-string load command: a cmd/cmdsize header plus the offset of
 // an inline NUL-terminated string, padded to an 8-byte multiple.
-fn create_string_cmd(kind: u32, path: &str) -> Vec<u8> {
+fn create_string_cmd(kind: u32, path: &[u8]) -> Vec<u8> {
     let cmd =
         DylinkerCommand { cmd: kind, cmdsize: 0, nameoff: size_of::<DylinkerCommand>() as u32 };
     let mut buf = to_vec(&cmd);

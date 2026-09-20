@@ -21,7 +21,7 @@ pub struct SymtabSection {
     /// and the copy that would follow it.
     pub strtab_size: usize,
     /// Each distinct string with its offset in the string table.
-    pub strtab_uniques: Vec<(u32, &'static str)>,
+    pub strtab_uniques: Vec<(u32, &'static [u8])>,
     pub nlocal: u32,
     pub nextdef: u32,
     pub nundef: u32,

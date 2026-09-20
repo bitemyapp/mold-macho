@@ -1,6 +1,8 @@
 //! The linker passes, in the order the driver runs them.
 
+use std::ffi::{OsStr, OsString};
 use std::ops::Range;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use crate::chunks::sectcreate::SectCreateSection;
@@ -21,7 +23,7 @@ use crate::mapped_file::MappedFile;
 use crate::tapi;
 use crate::target::RelocClass;
 use crate::target::Target;
-use crate::util::align_to;
+use crate::util::{align_to, leak_bytes, path_bytes};
 
 /// Returns the directories to search for `-l` libraries, in order. A
 /// library path that exists under a syslibroot is looked up there; the
@@ -32,14 +34,14 @@ fn library_search_dirs<E: Target>(ctx: &Context<E>) -> Vec<PathBuf> {
     for dir in &ctx.args.library_paths {
         let mut found = false;
         for root in &ctx.args.syslibroot {
-            let path = Path::new(root).join(dir.trim_start_matches('/'));
+            let path = under_root(root, dir);
             if path.is_dir() {
                 dirs.push(path);
                 found = true;
             }
         }
         if !found {
-            dirs.push(PathBuf::from(dir));
+            dirs.push(dir.clone());
         }
     }
 
@@ -48,11 +50,21 @@ fn library_search_dirs<E: Target>(ctx: &Context<E>) -> Vec<PathBuf> {
             dirs.push(PathBuf::from("/usr/lib"));
         } else {
             for root in &ctx.args.syslibroot {
-                dirs.push(Path::new(root).join("usr/lib"));
+                dirs.push(root.join("usr/lib"));
             }
         }
     }
     dirs
+}
+
+/// `dir` looked up under a syslibroot: an absolute directory keeps its
+/// path below the root.
+fn under_root(root: &Path, dir: &Path) -> PathBuf {
+    let mut relative = path_bytes(dir);
+    while let Some(rest) = relative.strip_prefix(b"/") {
+        relative = rest;
+    }
+    root.join(crate::util::os_str(relative))
 }
 
 /// Returns the directories to search for `-framework`, in order,
@@ -63,14 +75,14 @@ fn framework_search_dirs<E: Target>(ctx: &Context<E>) -> Vec<PathBuf> {
     for dir in &ctx.args.framework_paths {
         let mut found = false;
         for root in &ctx.args.syslibroot {
-            let path = Path::new(root).join(dir.trim_start_matches('/'));
+            let path = under_root(root, dir);
             if path.is_dir() {
                 dirs.push(path);
                 found = true;
             }
         }
         if !found {
-            dirs.push(PathBuf::from(dir));
+            dirs.push(dir.clone());
         }
     }
 
@@ -80,18 +92,23 @@ fn framework_search_dirs<E: Target>(ctx: &Context<E>) -> Vec<PathBuf> {
             dirs.push(PathBuf::from("/Library/Frameworks"));
         } else {
             for root in &ctx.args.syslibroot {
-                dirs.push(Path::new(root).join("System/Library/Frameworks"));
-                dirs.push(Path::new(root).join("Library/Frameworks"));
+                dirs.push(root.join("System/Library/Frameworks"));
+                dirs.push(root.join("Library/Frameworks"));
             }
         }
     }
     dirs
 }
 
-fn find_framework<E: Target>(ctx: &Context<E>, name: &str) -> Option<PathBuf> {
+fn find_framework<E: Target>(ctx: &Context<E>, name: &OsStr) -> Option<PathBuf> {
+    let with_suffix = |suffix: &str| {
+        let mut file = name.to_os_string();
+        file.push(suffix);
+        file
+    };
     for dir in framework_search_dirs(ctx) {
-        let fw = dir.join(format!("{name}.framework"));
-        for file in [format!("{name}.tbd"), name.to_string()] {
+        let fw = dir.join(with_suffix(".framework"));
+        for file in [with_suffix(".tbd"), name.to_os_string()] {
             let path = fw.join(file);
             if path.is_file() {
                 return Some(path);
@@ -101,7 +118,7 @@ fn find_framework<E: Target>(ctx: &Context<E>, name: &str) -> Option<PathBuf> {
     None
 }
 
-fn find_library<E: Target>(ctx: &Context<E>, name: &str) -> Option<PathBuf> {
+fn find_library<E: Target>(ctx: &Context<E>, name: &OsStr) -> Option<PathBuf> {
     // By default each directory is tried for a dylib and then an
     // archive before moving on (-search_paths_first, ld64's default
     // since Xcode 4). -search_dylibs_first restores the older ld64
@@ -115,7 +132,10 @@ fn find_library<E: Target>(ctx: &Context<E>, name: &str) -> Option<PathBuf> {
     for exts in passes {
         for dir in library_search_dirs(ctx) {
             for ext in *exts {
-                let path = dir.join(format!("lib{name}.{ext}"));
+                let mut file = OsString::from("lib");
+                file.push(name);
+                file.push(format!(".{ext}"));
+                let path = dir.join(file);
                 if path.is_file() {
                     return Some(path);
                 }
@@ -162,10 +182,10 @@ fn collect_file<E: Target>(
         // final link, so a dylib named on its command line is ignored
         // with ld64's warning.
         FileType::Tapi if ctx.args.relocatable => {
-            crate::warn!("{}, ignoring unexpected dylib text stub file", mf.name);
+            crate::warn!("{}, ignoring unexpected dylib text stub file", mf.name.display());
         }
         FileType::Dylib if ctx.args.relocatable => {
-            crate::warn!("{}, ignoring unexpected dylib file", mf.name);
+            crate::warn!("{}, ignoring unexpected dylib file", mf.name.display());
         }
         FileType::Tapi | FileType::Dylib => {
             let first = ctx.dylibs.len();
@@ -220,7 +240,7 @@ fn collect_file<E: Target>(
             input_files::parse_bitcode(ctx, mf, true);
         }
         FileType::Empty => {}
-        _ => fatal!("{}: unknown file type", mf.name),
+        _ => fatal!("{}: unknown file type", mf.name.display()),
     }
 }
 
@@ -279,7 +299,7 @@ pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
             if let InputArg::Lib(name, _) = arg
                 && !seen.insert(name.clone())
             {
-                crate::warn!("ignoring duplicate libraries: '-l{name}'");
+                crate::warn!("ignoring duplicate libraries: '-l{}'", name.display());
             }
         }
     }
@@ -304,7 +324,7 @@ pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
                 InputArg::File(path)
                 | InputArg::WeakFile(path)
                 | InputArg::ReexportFile(path)
-                | InputArg::NeededFile(path) => consider(Path::new(path), &mut stubs),
+                | InputArg::NeededFile(path) => consider(path, &mut stubs),
                 InputArg::Lib(name, _)
                 | InputArg::ReexportLib(name)
                 | InputArg::NeededLib(name) => {
@@ -326,7 +346,7 @@ pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
         let mut deps: Vec<&'static MappedFile> = Vec::new();
         for tbd in &wave1 {
             for name in &tbd.external_reexports {
-                if let Some(dep) = crate::input_files::find_reexport_file(ctx, name)
+                if let Some(dep) = crate::input_files::find_reexport_file(ctx, name.as_bytes())
                     && get_file_type(dep) == FileType::Tapi
                 {
                     deps.push(dep);
@@ -340,23 +360,23 @@ pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
     for arg in &inputs {
         match arg {
             InputArg::File(path) => {
-                let mf = MappedFile::must_open(Path::new(path));
+                let mf = MappedFile::must_open(path);
                 collect_file(ctx, mf, false, false, false, false, &mut queue);
             }
             InputArg::ForceLoad(path) => {
-                let mf = MappedFile::must_open(Path::new(path));
+                let mf = MappedFile::must_open(path);
                 collect_file(ctx, mf, true, false, false, false, &mut queue);
             }
             InputArg::WeakFile(path) => {
-                let mf = MappedFile::must_open(Path::new(path));
+                let mf = MappedFile::must_open(path);
                 collect_file(ctx, mf, false, true, false, false, &mut queue);
             }
             InputArg::ReexportFile(path) => {
-                let mf = MappedFile::must_open(Path::new(path));
+                let mf = MappedFile::must_open(path);
                 collect_file(ctx, mf, false, false, true, false, &mut queue);
             }
             InputArg::NeededFile(path) => {
-                let mf = MappedFile::must_open(Path::new(path));
+                let mf = MappedFile::must_open(path);
                 let before = ctx.dylibs.len();
                 collect_file(ctx, mf, false, false, false, false, &mut queue);
                 for dylib in &mut ctx.dylibs[before..] {
@@ -368,21 +388,21 @@ pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
                     let mf = MappedFile::must_open(&path);
                     collect_file(ctx, mf, false, false, true, false, &mut queue);
                 }
-                None => error!("library not found: -reexport-l{name}"),
+                None => error!("library not found: -reexport-l{}", name.display()),
             },
             InputArg::HiddenLib(name) => match find_library(ctx, name) {
                 Some(path) => {
                     let mf = MappedFile::must_open(&path);
                     collect_file(ctx, mf, false, false, false, true, &mut queue);
                 }
-                None => error!("library not found: -hidden-l{name}"),
+                None => error!("library not found: -hidden-l{}", name.display()),
             },
             InputArg::ReexportFramework(name) => match find_framework(ctx, name) {
                 Some(path) => {
                     let mf = MappedFile::must_open(&path);
                     collect_file(ctx, mf, false, false, true, false, &mut queue);
                 }
-                None => error!("framework not found: {name}"),
+                None => error!("framework not found: {}", name.display()),
             },
             InputArg::NeededLib(name) => match find_library(ctx, name) {
                 Some(path) => {
@@ -393,7 +413,7 @@ pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
                         dylib.is_needed = true;
                     }
                 }
-                None => error!("library not found: -needed-l{name}"),
+                None => error!("library not found: -needed-l{}", name.display()),
             },
             InputArg::NeededFramework(name) => match find_framework(ctx, name) {
                 Some(path) => {
@@ -404,21 +424,21 @@ pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
                         dylib.is_needed = true;
                     }
                 }
-                None => error!("framework not found: {name}"),
+                None => error!("framework not found: {}", name.display()),
             },
             InputArg::Lib(name, weak) => match find_library(ctx, name) {
                 Some(path) => {
                     let mf = MappedFile::must_open(&path);
                     collect_file(ctx, mf, false, *weak, false, false, &mut queue);
                 }
-                None => error!("library not found: -l{name}"),
+                None => error!("library not found: -l{}", name.display()),
             },
             InputArg::Framework(name, weak) => match find_framework(ctx, name) {
                 Some(path) => {
                     let mf = MappedFile::must_open(&path);
                     collect_file(ctx, mf, false, *weak, false, false, &mut queue);
                 }
-                None => error!("framework not found: {name}"),
+                None => error!("framework not found: {}", name.display()),
             },
         }
     }
@@ -432,7 +452,7 @@ pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
         if ctx.args.output_type != MH_BUNDLE {
             fatal!("-bundle_loader can only be used with -bundle");
         }
-        let mf = MappedFile::must_open(Path::new(&path));
+        let mf = MappedFile::must_open(&path);
         crate::input_files::parse_bundle_loader(ctx, mf);
     }
     load_pending(ctx, queue);
@@ -468,7 +488,7 @@ pub fn load_autolink_deps<E: Target>(ctx: &mut Context<E>) -> Autolinked {
     // auto-linked libraries alphabetically ("-framework AppKit" ...
     // "-lswiftCore", "-lswiftCoreFoundation" ...), which fixes their
     // ordinals too.
-    let mut pending: Vec<Vec<String>> = Vec::new();
+    let mut pending: Vec<Vec<Vec<u8>>> = Vec::new();
     for obj in &ctx.objs {
         if !obj.is_alive {
             continue;
@@ -493,12 +513,12 @@ pub fn load_autolink_deps<E: Target>(ctx: &mut Context<E>) -> Autolinked {
     let mut queue: Vec<PendingObject> = Vec::new();
     for opt in pending {
         ctx.processed_linker_options.insert(opt.clone());
-        let strs: Vec<&str> = opt.iter().map(String::as_str).collect();
-        let path = match strs.as_slice() {
-            [flag] if flag.starts_with("-l") => find_library(ctx, &flag[2..]),
-            ["-framework", name] => find_framework(ctx, name),
+        let path = match opt.as_slice() {
+            [flag] if flag.starts_with(b"-l") => find_library(ctx, crate::util::os_str(&flag[2..])),
+            [flag, name] if flag == b"-framework" => find_framework(ctx, crate::util::os_str(name)),
             _ => {
-                crate::warn!("unknown auto-link option: {:?}", opt);
+                let spelled: Vec<_> = opt.iter().map(|s| crate::util::display(s)).collect();
+                crate::warn!("unknown auto-link option: {}", spelled.join(" "));
                 None
             }
         };
@@ -1017,7 +1037,7 @@ pub fn do_lto<E: Target>(ctx: &mut Context<E>) -> bool {
     if let Some(path) = &ctx.args.object_path_lto
         && std::fs::write(path, &data).is_err()
     {
-        fatal!("-object_path_lto: cannot write {path}");
+        fatal!("-object_path_lto: cannot write {}", path.display());
     }
 
     // Retire the placeholders: the compiled object provides the real
@@ -1042,7 +1062,7 @@ pub fn do_lto<E: Target>(ctx: &mut Context<E>) -> bool {
     }
 
     let mf = Box::leak(Box::new(crate::mapped_file::MappedFile {
-        name: "<LTO>".to_string(),
+        name: PathBuf::from("<LTO>"),
         data: Vec::leak(data),
         parent: None,
     }));
@@ -1156,7 +1176,7 @@ pub fn check_input_versions<E: Target>(ctx: &Context<E>) {
             crate::error!(
                 "building for '{}', but linking in object file ({}) built for '{}'",
                 platform_name(ctx.args.platform),
-                obj.mf.name,
+                obj.mf.name.display(),
                 platform_name(first.platform)
             );
             continue;
@@ -1167,7 +1187,7 @@ pub fn check_input_versions<E: Target>(ctx: &Context<E>) {
         if ctx.args.platform_minos != 0 && version.minos > ctx.args.platform_minos {
             crate::warn!(
                 "object file ({}) was built for newer '{}' version ({}) than being linked ({})",
-                obj.mf.name,
+                obj.mf.name.display(),
                 platform_name(version.platform),
                 format_version(version.minos),
                 format_version(ctx.args.platform_minos)
@@ -1713,7 +1733,7 @@ pub fn check_duplicate_symbols<E: Target>(ctx: &Context<E>) {
     for (sym_id, obj_idx) in duplicates {
         let prev = match ctx.symbols[sym_id].file() {
             Some(FileId::Obj(idx)) => file_display(&ctx.objs[idx as usize]),
-            _ => "?",
+            _ => "?".into(),
         };
         error!(
             "duplicate symbol: {}: {}: {}",
@@ -1799,7 +1819,7 @@ pub fn print_dependencies<E: Target>(ctx: &Context<E>) {
                     file_display(&ctx.objs[idx])
                 }
                 Some(FileId::Dylib(idx)) if idx != u32::MAX => {
-                    &ctx.dylibs[idx as usize].install_name
+                    crate::util::display(&ctx.dylibs[idx as usize].install_name)
                 }
                 _ => continue,
             };
@@ -1824,7 +1844,7 @@ pub fn print_trace<E: Target>(ctx: &Context<E>) {
         }
     }
     for dylib in &ctx.dylibs {
-        println!("{}", dylib.path);
+        println!("{}", dylib.path.display());
     }
 }
 
@@ -1850,8 +1870,8 @@ pub fn print_why_load<E: Target>(ctx: &Context<E>) {
 /// A file name for diagnostics: the object's path. Archive members
 /// already carry their "archive(member)" form as their mapped-file
 /// name.
-pub(crate) fn file_display(obj: &crate::input_files::ObjectFile) -> &str {
-    &obj.mf.name
+pub(crate) fn file_display(obj: &crate::input_files::ObjectFile) -> std::borrow::Cow<'_, str> {
+    obj.mf.name.to_string_lossy()
 }
 
 /// Drops load commands for dylibs no symbol binds to
@@ -4115,7 +4135,7 @@ pub fn create_output_sections<E: Target>(ctx: &mut Context<E>) {
     let sectcreate = std::mem::take(&mut ctx.args.sectcreate);
     for (seg, sect, path) in &sectcreate {
         let Ok(data) = std::fs::read(path) else {
-            fatal!("-sectcreate: cannot read {path}");
+            fatal!("-sectcreate: cannot read {}", path.display());
         };
         let segname: &'static str = String::leak(seg.clone());
         add_sectcreate(ctx, SectCreateSection::new(segname, sect, Vec::leak(data)));
@@ -4358,13 +4378,13 @@ fn keep_local_symbol_in<E: Target>(ctx: &Context<E>, name: &str, isec: Option<u3
 /// notes) has it copied through, the address-bearing entries rebased
 /// to their subsections' output addresses and those of dead
 /// subsections dropped. Shared by the final link and -r.
-pub fn plan_object_stabs<E: Target>(
-    ctx: &Context<E>,
-    obj_idx: usize,
-    cwd: &str,
-) -> Vec<(&'static str, NList, Option<crate::symbol::SymbolId>)> {
+/// An object's planned stab entries: each name, the nlist it gets, and
+/// the symbol whose final address fills in n_value, if any.
+pub type StabPlan = Vec<(&'static [u8], NList, Option<crate::symbol::SymbolId>)>;
+
+pub fn plan_object_stabs<E: Target>(ctx: &Context<E>, obj_idx: usize, cwd: &Path) -> StabPlan {
     let obj = &ctx.objs[obj_idx];
-    let mut out: Vec<(&'static str, NList, Option<crate::symbol::SymbolId>)> = Vec::new();
+    let mut out: StabPlan = Vec::new();
     if !obj.is_alive {
         return out;
     }
@@ -4417,7 +4437,7 @@ pub fn plan_object_stabs<E: Target>(
                 skip_size = false;
                 continue;
             }
-            out.push((name, ent, None));
+            out.push((name.as_bytes(), ent, None));
         }
         return out;
     }
@@ -4434,35 +4454,33 @@ pub fn plan_object_stabs<E: Target>(
     // object (or "archive(member)"), as an absolute path.
     let (dir, file) = match crate::dwarf::compile_unit_name(obj.mf.data(), &obj.sect_hdrs) {
         Some((dir, file)) => (dir, file),
-        None => (String::new(), obj.mf.name.rsplit('/').next().unwrap_or("").to_string()),
+        None => {
+            let leaf = obj.mf.name.file_name().map_or(&[][..], |f| f.as_bytes());
+            (Vec::new(), leaf.to_vec())
+        }
     };
-    let dir = if dir.is_empty() {
-        format!("{cwd}/")
-    } else if dir.ends_with('/') {
-        dir
-    } else {
-        format!("{dir}/")
-    };
-    for name in [dir, file] {
-        out.push((
-            String::leak(name) as &'static str,
-            NList { n_strx: 0, n_type: N_SO, ..Default::default() },
-            None,
-        ));
+    let mut dir = if dir.is_empty() { path_bytes(cwd).to_vec() } else { dir };
+    if !dir.ends_with(b"/") {
+        dir.push(b'/');
     }
-    let mut oso_name = match obj.mf.parent {
-        Some(parent) if parent.name.starts_with('/') => obj.mf.name.clone(),
-        Some(_) | None if obj.mf.name.starts_with('/') => obj.mf.name.clone(),
-        _ => format!("{cwd}/{}", obj.mf.name),
+    for name in [dir, file] {
+        out.push((leak_bytes(name), NList { n_strx: 0, n_type: N_SO, ..Default::default() }, None));
+    }
+    let mut oso_name: Vec<u8> = match obj.mf.parent {
+        Some(parent) if parent.name.is_absolute() => path_bytes(&obj.mf.name).to_vec(),
+        Some(_) | None if obj.mf.name.is_absolute() => path_bytes(&obj.mf.name).to_vec(),
+        _ => path_bytes(&cwd.join(&obj.mf.name)).to_vec(),
     };
     // -oso_prefix strips a leading path from every N_OSO, so
     // debug builds relocated to another machine (or built in a
     // sandbox) can still find their objects relative to a
     // debugger's source map. "." means the current directory.
     if let Some(prefix) = &ctx.args.oso_prefix {
-        let prefix: &str = if prefix == "." { &format!("{cwd}/") } else { prefix };
+        let mut cwd_prefix = path_bytes(cwd).to_vec();
+        cwd_prefix.push(b'/');
+        let prefix: &[u8] = if prefix == b"." { &cwd_prefix } else { prefix };
         if let Some(rest) = oso_name.strip_prefix(prefix) {
-            oso_name = rest.to_string();
+            oso_name = rest.to_vec();
         }
     }
     // n_value is the object's modification time, which dsymutil and
@@ -4473,7 +4491,7 @@ pub fn plan_object_stabs<E: Target>(
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map_or(0, |d| d.as_secs());
     out.push((
-        String::leak(std::mem::take(&mut oso_name)),
+        leak_bytes(std::mem::take(&mut oso_name)),
         NList { n_strx: 0, n_type: N_OSO, n_sect: E::CPUSUBTYPE as u8, n_desc: 1, n_value: mtime },
         None,
     ));
@@ -4503,28 +4521,28 @@ pub fn plan_object_stabs<E: Target>(
             // on a -r output that had only the pair).
             let sect = ctx.isec_n_sect(isec);
             out.push((
-                "",
+                b"",
                 NList { n_strx: 1, n_type: N_BNSYM, n_sect: sect, ..Default::default() },
                 Some(sym_id),
             ));
             out.push((
-                stab_name,
+                stab_name.as_bytes(),
                 NList { n_strx: 0, n_type: N_FUN, n_sect: sect, ..Default::default() },
                 Some(sym_id),
             ));
             out.push((
-                "",
+                b"",
                 NList { n_strx: 1, n_type: N_FUN, n_value: isec.size as u64, ..Default::default() },
                 None,
             ));
             out.push((
-                "",
+                b"",
                 NList { n_strx: 1, n_type: N_ENSYM, n_sect: sect, ..Default::default() },
                 Some(sym_id),
             ));
         } else {
             out.push((
-                stab_name,
+                stab_name.as_bytes(),
                 NList {
                     n_strx: 0,
                     n_type: if nlist.is_extern() { N_GSYM } else { N_STSYM },
@@ -4537,7 +4555,7 @@ pub fn plan_object_stabs<E: Target>(
     }
 
     // An N_SO with an empty name closes the object's stabs.
-    out.push(("", NList { n_strx: 1, n_type: N_SO, n_sect: 1, ..Default::default() }, None));
+    out.push((b"", NList { n_strx: 1, n_type: N_SO, n_sect: 1, ..Default::default() }, None));
     out
 }
 
@@ -4560,12 +4578,12 @@ pub fn create_output_symtab<E: Target>(
     // is built afterwards in one parallel pass (below); an entry
     // whose name is the empty sentinel keeps whatever fixed n_strx
     // its loop assigned (the "" and "-" placeholders).
-    let mut names: Vec<&'static str> = Vec::new();
+    let mut names: Vec<&'static [u8]> = Vec::new();
 
     // Swift AST paths for the debugger (-add_ast_path), as N_AST stabs.
     for path in &ctx.args.add_ast_paths {
         let n_strx = 0;
-        names.push(String::leak(path.clone()));
+        names.push(leak_bytes(path_bytes(path).to_vec()));
         data.entries.push((NList { n_strx, n_type: N_AST, ..Default::default() }, None));
     }
 
@@ -4576,15 +4594,14 @@ pub fn create_output_symtab<E: Target>(
     // functions and globals ended up, and the debugger reads the DWARF
     // from the objects.
     if !ctx.args.strip_debug {
-        let cwd =
-            std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        let cwd = std::env::current_dir().unwrap_or_default();
         let cwd = &cwd;
 
         // Each object's stab run is independent; plan them in
         // parallel and append in object order, the same shape as the
         // per-object locals planning below.
         use rayon::prelude::*;
-        let planned: Vec<Vec<(&'static str, NList, Option<crate::symbol::SymbolId>)>> = ctx
+        let planned: Vec<StabPlan> = ctx
             .objs
             .par_iter()
             .enumerate()
@@ -4604,7 +4621,7 @@ pub fn create_output_symtab<E: Target>(
         }
         names.reserve(total - start);
         data.entries.reserve(total - start);
-        struct NamePtr(*mut &'static str);
+        struct NamePtr(*mut &'static [u8]);
         unsafe impl Sync for NamePtr {}
         struct EntPtr(*mut (NList, Option<crate::symbol::SymbolId>));
         unsafe impl Sync for EntPtr {}
@@ -4684,7 +4701,7 @@ pub fn create_output_symtab<E: Target>(
             .collect();
         for group in per_obj {
             for (name, ent, sym_id) in group {
-                names.push(name);
+                names.push(name.as_bytes());
                 data.entries.push((ent, Some(sym_id)));
             }
         }
@@ -4695,7 +4712,7 @@ pub fn create_output_symtab<E: Target>(
             if !sec.is_alive() || sec.output_section().is_none() {
                 continue;
             }
-            names.push(name);
+            names.push(name.as_bytes());
             data.entries.push((
                 NList {
                     n_strx: 0,
@@ -4713,7 +4730,7 @@ pub fn create_output_symtab<E: Target>(
         if !ctx.objc_stubs.symbols.is_empty() {
             let hdr = &ctx.objc_stubs.hdr;
             for (i, &(sym, _)) in ctx.objc_stubs.symbols.iter().enumerate() {
-                names.push(ctx.symbols[sym].name());
+                names.push(ctx.symbols[sym].name().as_bytes());
                 data.entries.push((
                     NList {
                         n_strx: 0,
@@ -4777,7 +4794,7 @@ pub fn create_output_symtab<E: Target>(
         }
         let sym = &ctx.symbols[i];
         let isec = ctx.resolve_isec(sym.input_section().unwrap() as usize);
-        names.push(sym.name());
+        names.push(sym.name().as_bytes());
         let ent = NList {
             n_strx: 0,
             n_type: N_SECT | N_PEXT,
@@ -4795,7 +4812,7 @@ pub fn create_output_symtab<E: Target>(
     for &i in sorted_globals {
         let sym = &ctx.symbols[i];
         let n_strx = 0;
-        names.push(sym.name());
+        names.push(sym.name().as_bytes());
         let (n_type, n_sect, mut n_desc) = match (sym.file(), sym.input_section()) {
             (_, Some(isec)) => {
                 (N_SECT | N_EXT, ctx.isec_n_sect(&ctx.isecs[ctx.resolve_isec(isec as usize)]), 0)
@@ -4829,7 +4846,7 @@ pub fn create_output_symtab<E: Target>(
         let sym = &ctx.symbols[i];
         let Some(FileId::Dylib(dylib)) = sym.file() else { unreachable!() };
         let n_strx = 0;
-        names.push(sym.name());
+        names.push(sym.name().as_bytes());
         // A flat-namespace import records the DYNAMIC_LOOKUP ordinal, a
         // -bundle_loader import the EXECUTABLE ordinal.
         let ordinal = ctx.nlist_library_ordinal(dylib) as u16;
@@ -4882,10 +4899,7 @@ pub fn create_output_symtab<E: Target>(
             .zip(data.entries.par_iter())
             .map(|(n, (_, sym))| match sym {
                 Some(id) => (*id as u64).wrapping_mul(FIB),
-                None => {
-                    let b = n.as_bytes();
-                    xxhash_rust::xxh3::xxh3_64(&b[b.len().saturating_sub(16)..])
-                }
+                None => xxhash_rust::xxh3::xxh3_64(&n[n.len().saturating_sub(16)..]),
             })
             .collect();
         const NS: usize = 64;
@@ -4899,7 +4913,7 @@ pub fn create_output_symtab<E: Target>(
         struct ShardOut {
             /// Unique names in first-appearance order, with their
             /// shard-local byte offsets.
-            uniq: Vec<(&'static str, u32)>,
+            uniq: Vec<(&'static [u8], u32)>,
             blob_len: u32,
             /// (entry index, shard-local unique index)
             resolved: Vec<(u32, u32)>,
@@ -4910,7 +4924,7 @@ pub fn create_output_symtab<E: Target>(
             .map(|bin| {
                 // Keyed by pointer: interned names dedup by identity.
                 let mut map: hashbrown::HashMap<*const u8, u32> = hashbrown::HashMap::new();
-                let mut uniq: Vec<(&'static str, u32)> = Vec::new();
+                let mut uniq: Vec<(&'static [u8], u32)> = Vec::new();
                 let mut blob_len = 0u32;
                 let mut resolved = Vec::with_capacity(bin.len());
                 for e in bin {
@@ -5295,7 +5309,7 @@ fn order_file_ranks<E: Target>(ctx: &Context<E>) -> Option<Vec<u64>> {
     let mut next = 0u64;
     for path in &ctx.args.order_files {
         let Ok(text) = std::fs::read_to_string(path) else {
-            fatal!("-order_file: cannot read {path}");
+            fatal!("-order_file: cannot read {}", path.display());
         };
         for line in text.lines() {
             let mut line = line.split('#').next().unwrap_or("").trim();
@@ -5329,10 +5343,13 @@ fn order_file_ranks<E: Target>(ctx: &Context<E>) -> Option<Vec<u64>> {
         let Some(entries) = rank_of.get(sym.name()) else {
             continue;
         };
-        let leaf = ctx.objs[obj].mf.name.rsplit('/').next().unwrap_or("");
+        let leaf = ctx.objs[obj].mf.name.file_name().map_or(&[][..], |f| f.as_bytes());
         for (file, r) in entries {
             let applies = match file {
-                Some(f) => leaf == f || ctx.objs[obj].mf.name.ends_with(f),
+                Some(f) => {
+                    leaf == f.as_bytes()
+                        || path_bytes(&ctx.objs[obj].mf.name).ends_with(f.as_bytes())
+                }
                 None => true,
             };
             if applies {

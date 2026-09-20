@@ -15,7 +15,11 @@
 //! __.SYMDEF index member, which a linker that parses every member
 //! eagerly can simply skip. GNU ar's SysV long names are accepted too.
 
+use std::ffi::OsString;
+use std::path::PathBuf;
+
 use crate::mapped_file::MappedFile;
+use crate::util::os_str;
 
 const HEADER_SIZE: usize = 60;
 
@@ -42,14 +46,13 @@ impl<'a> ArHeader<'a> {
 
     /// Returns the member's file name. A BSD-style long name is stored
     /// right after the header, so `body` is advanced past it.
-    fn read_name(&self, strtab: &[u8], body: &mut &'a [u8]) -> String {
+    fn read_name(&self, strtab: &'a [u8], body: &mut &'a [u8]) -> &'a [u8] {
         // BSD-style long filename
         if let Some(rest) = self.name.strip_prefix(b"#1/") {
             let len = parse_decimal(rest);
             let (name, remaining) = body.split_at(len.min(body.len()));
             *body = remaining;
-            let name = name.split(|&b| b == 0).next().unwrap_or(&[]);
-            return String::from_utf8_lossy(name).into_owned();
+            return name.split(|&b| b == 0).next().unwrap_or(&[]);
         }
 
         // SysV-style long filename
@@ -57,12 +60,12 @@ impl<'a> ArHeader<'a> {
             let offset = parse_decimal(rest);
             let start = strtab.get(offset..).unwrap_or(&[]);
             let end = memchr::memmem::find(start, b"/\n").unwrap_or(start.len());
-            return String::from_utf8_lossy(&start[..end]).into_owned();
+            return &start[..end];
         }
 
         // Short filename, space-padded and (in the SysV form) slash-terminated.
         let end = self.name.iter().position(|&b| b == b'/').unwrap_or(self.name.len());
-        String::from_utf8_lossy(self.name[..end].trim_ascii_end()).into_owned()
+        self.name[..end].trim_ascii_end()
     }
 }
 
@@ -77,7 +80,9 @@ fn parse_decimal(bytes: &[u8]) -> usize {
 
 /// Iterates over the members of an archive as (name, body) pairs, skipping
 /// the symbol table and string table.
-fn archive_members(mf: &'static MappedFile) -> impl Iterator<Item = (String, &'static [u8])> {
+fn archive_members(
+    mf: &'static MappedFile,
+) -> impl Iterator<Item = (&'static [u8], &'static [u8])> {
     let data = mf.data();
     let mut pos = 8;
     let mut strtab: &'static [u8] = &[];
@@ -114,7 +119,7 @@ fn archive_members(mf: &'static MappedFile) -> impl Iterator<Item = (String, &'s
 
             // Skip BSD archive symbol tables (__.SYMDEF, __.SYMDEF SORTED,
             // __.SYMDEF_64 ...).
-            if name.starts_with("__.SYMDEF") {
+            if name.starts_with(b"__.SYMDEF") {
                 continue;
             }
 
@@ -129,6 +134,10 @@ pub fn read_archive_members(mf: &'static MappedFile) -> impl Iterator<Item = &'s
     debug_assert!(mf.data().starts_with(b"!<arch>\n"));
     let base = mf.data().as_ptr() as usize;
     archive_members(mf).map(move |(name, body)| {
-        mf.slice(format!("{}({})", mf.name, name), body.as_ptr() as usize - base, body.len())
+        let mut full_name = OsString::from(&mf.name);
+        full_name.push("(");
+        full_name.push(os_str(name));
+        full_name.push(")");
+        mf.slice(PathBuf::from(full_name), body.as_ptr() as usize - base, body.len())
     })
 }

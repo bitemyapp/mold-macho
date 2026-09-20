@@ -79,6 +79,30 @@ pub fn encode_sleb(out: &mut Vec<u8>, mut value: i64) {
     }
 }
 
+/// Converts bytes from a response file, a load command or a file list
+/// to an OS string. Unix paths can contain arbitrary non-NUL bytes.
+pub fn os_str(bytes: &[u8]) -> &std::ffi::OsStr {
+    std::os::unix::ffi::OsStrExt::from_bytes(bytes)
+}
+
+/// The bytes of a path, as the file system and Mach-O load commands
+/// hold them.
+pub fn path_bytes(path: &std::path::Path) -> &[u8] {
+    std::os::unix::ffi::OsStrExt::as_bytes(path.as_os_str())
+}
+
+/// Leaks a byte string for the rest of the process's lifetime: names
+/// in the output string table outlive every data structure of a link,
+/// and the process exits as soon as the link is done.
+pub fn leak_bytes(bytes: Vec<u8>) -> &'static [u8] {
+    Vec::leak(bytes)
+}
+
+/// Formats a byte string for diagnostics, replacing invalid UTF-8.
+pub fn display(bytes: &[u8]) -> std::borrow::Cow<'_, str> {
+    String::from_utf8_lossy(bytes)
+}
+
 /// Computes the SHA-256 hash of `data` into `out`.
 pub fn sha256(data: &[u8], out: &mut [u8; 32]) {
     use sha2::Digest;

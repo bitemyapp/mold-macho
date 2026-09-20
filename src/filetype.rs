@@ -49,7 +49,8 @@ pub fn get_file_type(mf: &MappedFile) -> FileType {
     // (Xcode's eager-linking stubs put it there), so a .tbd that
     // starts with '{' is taken as one.
     if data.starts_with(b"{")
-        && (mf.name.ends_with(".tbd") || data.windows(16).any(|w| w == b"tapi_tbd_version"))
+        && (mf.name.extension().is_some_and(|ext| ext == "tbd")
+            || data.windows(16).any(|w| w == b"tapi_tbd_version"))
     {
         return FileType::Tapi;
     }

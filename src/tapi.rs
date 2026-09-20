@@ -10,6 +10,8 @@
 //! Since reexported symbols resolve through the top-level library, all
 //! documents' exports are merged.
 
+use std::path::Path;
+
 use crate::fatal;
 use crate::mapped_file::MappedFile;
 
@@ -69,14 +71,14 @@ impl Json {
 }
 
 struct JsonParser<'a> {
-    file: &'a str,
+    file: &'a Path,
     text: &'static str,
     pos: usize,
 }
 
 impl JsonParser<'_> {
     fn fail(&self, what: &str) -> ! {
-        fatal!("{}: malformed .tbd JSON at byte {}: {what}", self.file, self.pos);
+        fatal!("{}: malformed .tbd JSON at byte {}: {what}", self.file.display(), self.pos);
     }
 
     fn skip_ws(&mut self) {
@@ -223,7 +225,7 @@ impl JsonParser<'_> {
 /// Parses a TBD v5 file: JSON with a "main_library" object and, for
 /// reexported libraries inlined in the same file, a "libraries" array
 /// of objects of the same shape. Each group applies only to its targets.
-fn parse_json(file: &str, text: &'static str, arch: &str) -> TbdFile {
+fn parse_json(file: &Path, text: &'static str, arch: &str) -> TbdFile {
     let mut p = JsonParser { file, text, pos: 0 };
     let root = p.value();
 
@@ -287,11 +289,11 @@ fn parse_json(file: &str, text: &'static str, arch: &str) -> TbdFile {
     };
 
     let Some(main) = root.get("main_library") else {
-        fatal!("{file}: no main_library in .tbd file");
+        fatal!("{}: no main_library in .tbd file", file.display());
     };
     let target = target_of(main);
     if !library_applies(main, &target) {
-        fatal!("{file}: .tbd file does not support {target}");
+        fatal!("{}: .tbd file does not support {target}", file.display());
     }
     if let Some(name) = main
         .get("install_names")
@@ -344,7 +346,7 @@ fn parse_json(file: &str, text: &'static str, arch: &str) -> TbdFile {
     }
 
     if tbd.install_name.is_empty() {
-        fatal!("{file}: no install name in .tbd file");
+        fatal!("{}: no install name in .tbd file", file.display());
     }
     tbd
 }
@@ -402,7 +404,7 @@ pub fn prefetch(mfs: &[&'static MappedFile], arch: &'static str) -> Vec<TbdFile>
 
 pub fn parse(mf: &MappedFile, arch: &str) -> TbdFile {
     let Ok(text): Result<&'static str, _> = std::str::from_utf8(mf.data()) else {
-        fatal!("{}: invalid UTF-8 in .tbd file", mf.name);
+        fatal!("{}: invalid UTF-8 in .tbd file", mf.name.display());
     };
 
     // TBD version 5 is JSON (tapi's current output, and what Xcode
@@ -436,7 +438,7 @@ pub fn parse(mf: &MappedFile, arch: &str) -> TbdFile {
         let arch = select_arch(arch, available);
         let doc_active = yaml_matches(fields.iter().filter(|f| f.indent == 0 && !f.item), arch);
         if doc == 0 && !doc_active {
-            fatal!("{}: .tbd file does not support {arch}-macos", mf.name);
+            fatal!("{}: .tbd file does not support {arch}-macos", mf.name.display());
         }
         let mut active = doc_active;
         for (i, field) in fields.iter().enumerate() {
@@ -498,7 +500,7 @@ pub fn parse(mf: &MappedFile, arch: &str) -> TbdFile {
         reexports.into_iter().filter(|name| !doc_names.contains(name)).collect();
 
     if tbd.install_name.is_empty() {
-        fatal!("{}: no install-name in .tbd file", mf.name);
+        fatal!("{}: no install-name in .tbd file", mf.name.display());
     }
     tbd
 }
@@ -588,7 +590,7 @@ mod tests {
 
     fn mapped(text: &'static str) -> &'static MappedFile {
         Box::leak(Box::new(MappedFile {
-            name: "test.tbd".to_string(),
+            name: std::path::PathBuf::from("test.tbd"),
             data: text.as_bytes(),
             parent: None,
         }))

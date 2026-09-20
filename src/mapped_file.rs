@@ -33,7 +33,7 @@ const READ_THRESHOLD: u64 = 32 * 1024;
 // memory. Either way, its contents are accessible through `data()`.
 #[derive(Debug)]
 pub struct MappedFile {
-    pub name: String,
+    pub name: PathBuf,
     /// The bytes, deliberately leaked with the input file.
     pub(crate) data: &'static [u8],
     /// The archive this file is a member of.
@@ -75,11 +75,8 @@ impl MappedFile {
                 .unwrap_or_else(|e| fatal!("{display}: mmap failed: {e}"));
             Box::leak(Box::new(map))
         };
-        let mf: &'static Self = Box::leak(Box::new(Self {
-            name: path.to_string_lossy().into_owned(),
-            data,
-            parent: None,
-        }));
+        let mf: &'static Self =
+            Box::leak(Box::new(Self { name: path.to_path_buf(), data, parent: None }));
         FILE_CACHE.lock().unwrap().get_or_insert_with(HashMap::new).insert(path.to_path_buf(), mf);
         Ok(mf)
     }
@@ -104,7 +101,7 @@ impl MappedFile {
     }
 
     /// Returns a view of a member of this archive (or of a fat file).
-    pub fn slice(&'static self, name: String, start: usize, size: usize) -> &'static Self {
+    pub fn slice(&'static self, name: PathBuf, start: usize, size: usize) -> &'static Self {
         assert!(start <= self.size() && size <= self.size() - start);
         Box::leak(Box::new(Self {
             name,

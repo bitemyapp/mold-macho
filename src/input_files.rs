@@ -1,5 +1,7 @@
 //! Input file parsing: object files, dylib stubs and archives.
 
+use std::path::{Path, PathBuf};
+
 use crate::context::Context;
 use crate::fatal;
 use crate::input_sections::InputSection;
@@ -60,7 +62,7 @@ pub struct ObjectFile {
     pub priority: u32,
     /// LC_LINKER_OPTION auto-link requests, acted on only if the file
     /// is live.
-    pub linker_options: Vec<Vec<String>>,
+    pub linker_options: Vec<Vec<Vec<u8>>>,
     /// Platforms and minimum OS versions from LC_BUILD_VERSION or
     /// LC_VERSION_MIN_*. Checked only after archive selection.
     pub platform_versions: Vec<PlatformVersion>,
@@ -108,7 +110,7 @@ impl ObjectFile {
     /// ObjectFile::internal.
     pub fn internal() -> Self {
         let mf: &'static MappedFile = Box::leak(Box::new(MappedFile {
-            name: "<synthesized>".to_string(),
+            name: PathBuf::from("<synthesized>"),
             data: &[],
             parent: None,
         }));
@@ -171,8 +173,9 @@ pub fn find_subsec(
 #[derive(Debug)]
 pub struct DylibFile {
     /// The path the library was loaded from, for -t.
-    pub path: String,
-    pub install_name: String,
+    pub path: PathBuf,
+    /// The install name, as LC_ID_DYLIB (or a .tbd) spells it.
+    pub install_name: Vec<u8>,
     pub current_version: u32,
     pub compatibility_version: u32,
     /// The 1-based ordinal used to refer to this dylib in bind records;
@@ -214,9 +217,9 @@ pub struct DylibFile {
     pub is_app_extension_safe: bool,
     /// LC_SUB_FRAMEWORK: this dylib belongs to the named umbrella and
     /// may only be linked by it or by an allowed client.
-    pub sub_framework: Option<String>,
+    pub sub_framework: Option<Vec<u8>>,
     /// LC_SUB_CLIENT: clients allowed to link this subframework.
-    pub sub_clients: Vec<String>,
+    pub sub_clients: Vec<Vec<u8>>,
     pub exports: hashbrown::HashSet<&'static str>,
     /// Exports that are weak definitions: binding to one sets
     /// MH_BINDS_TO_WEAK on the client image.
@@ -247,7 +250,7 @@ pub struct StagedObject {
     pub hidden: bool,
     pub priority: u32,
     pub sect_hdrs: &'static [MachSection],
-    pub linker_options: Vec<Vec<String>>,
+    pub linker_options: Vec<Vec<Vec<u8>>>,
     pub platform_versions: Vec<PlatformVersion>,
     pub isecs: Vec<InputSection>,
     pub relocs: Vec<crate::input_sections::Reloc>,
@@ -349,7 +352,7 @@ pub fn stage_object<E: Target>(
     let hdr = MachHeader::read_from(data);
 
     if hdr.cputype != E::CPUTYPE {
-        fatal!("{}: incompatible CPU type: expected {}", mf.name, E::NAME);
+        fatal!("{}: incompatible CPU type: expected {}", mf.name.display(), E::NAME);
     }
 
     let mut isecs: Vec<InputSection> = Vec::new();
@@ -391,7 +394,7 @@ pub fn stage_object<E: Target>(
                 for _ in 0..count {
                     let rest = &data[p..off + lc.cmdsize as usize];
                     let len = rest.iter().position(|&b| b == 0).unwrap_or(rest.len());
-                    strs.push(String::from_utf8_lossy(&rest[..len]).into_owned());
+                    strs.push(rest[..len].to_vec());
                     p += len + 1;
                 }
                 linker_options.push(strs);
@@ -516,7 +519,7 @@ pub fn stage_object<E: Target>(
                         let rest = &contents[start..];
                         let p = unsafe { libc::memchr(rest.as_ptr().cast(), 0, rest.len()) };
                         if p.is_null() {
-                            fatal!("{}: malformed __cstring section", mf.name);
+                            fatal!("{}: malformed __cstring section", mf.name.display());
                         }
                         start += (p as usize - rest.as_ptr() as usize) + 1;
                     }
@@ -626,7 +629,7 @@ pub fn stage_object<E: Target>(
                     Some((last, isecs[last].size as u64))
                 });
                 let Some((tsub, toff)) = found else {
-                    fatal!("{}: relocation against a discarded section", mf.name);
+                    fatal!("{}: relocation against a discarded section", mf.name.display());
                 };
                 rel.set_target(crate::input_sections::RelocTarget::Section(tsub as u32));
                 rel.addend = toff as i64;
@@ -648,7 +651,7 @@ pub fn stage_object<E: Target>(
             isecs[sub].nrels = (obj_relocs.len() - start) as u32;
         }
         if pos < rels.len() {
-            fatal!("{}: relocation outside its section", mf.name);
+            fatal!("{}: relocation outside its section", mf.name.display());
         }
     }
 
@@ -1236,9 +1239,11 @@ fn parse_compact_unwind(
     subsecs: &[crate::input_sections::InputSectionId],
     nlists: &[NList],
     data: &'static [u8],
-    file_name: &str,
+    file_name: &Path,
     out: &mut Vec<UnwindRecord>,
 ) {
+    // Diagnostics spell the path lossily.
+    let file_name = file_name.display();
     let geo: Vec<(u64, u64, usize)> = subsecs
         .iter()
         .map(|&id| {
@@ -1422,7 +1427,7 @@ fn parse_eh_frame<E: Target>(
     subsecs: &[crate::input_sections::InputSectionId],
     nlists: &[NList],
     data: &'static [u8],
-    file_name: &str,
+    file_name: &Path,
     unwind: &mut Vec<UnwindRecord>,
     out_cies: &mut Vec<Cie>,
     out_fdes: &mut Vec<Fde>,
@@ -1431,6 +1436,8 @@ fn parse_eh_frame<E: Target>(
     // does; a final image has no use for them.
     keep_all_fdes: bool,
 ) {
+    // Diagnostics spell the path lossily.
+    let file_name = file_name.display();
     let geo: Vec<(u64, u64, usize)> = subsecs
         .iter()
         .map(|&id| {
@@ -1724,11 +1731,12 @@ pub fn get_fat_slice<E: Target>(mf: &'static MappedFile) -> &'static MappedFile 
         if read_be32(off) == E::CPUTYPE {
             let obj_off = read_be32(off + 8) as usize;
             let obj_size = read_be32(off + 12) as usize;
-            let name = format!("{}(for architecture {})", mf.name, E::NAME);
-            return mf.slice(name, obj_off, obj_size);
+            let mut name = std::ffi::OsString::from(&mf.name);
+            name.push(format!("(for architecture {})", E::NAME));
+            return mf.slice(name.into(), obj_off, obj_size);
         }
     }
-    fatal!("{}: fat file does not contain {}", mf.name, E::NAME);
+    fatal!("{}: fat file does not contain {}", mf.name.display(), E::NAME);
 }
 
 /// Parses a Mach-O dylib binary: its identity from LC_ID_DYLIB and its
@@ -1743,15 +1751,16 @@ pub fn get_fat_slice<E: Target>(mf: &'static MappedFile) -> &'static MappedFile 
 /// re-exports it (AppKit re-exports Foundation, public, and
 /// UIFoundation, private: ld-prime binds NSHomeDirectory to Foundation
 /// and NSAttachmentAttributeName to AppKit).
-fn is_public_location(install_name: &str) -> bool {
-    if let Some(rest) = install_name.strip_prefix("/usr/lib/") {
-        return !rest.contains('/');
+fn is_public_location(install_name: &[u8]) -> bool {
+    if let Some(rest) = install_name.strip_prefix(b"/usr/lib/") {
+        return !rest.contains(&b'/');
     }
-    if let Some(rest) = install_name.strip_prefix("/System/Library/Frameworks/") {
+    if let Some(rest) = install_name.strip_prefix(b"/System/Library/Frameworks/") {
         // Only a top-level framework: X.framework/... with no further
         // Frameworks directory in the path.
-        if let Some(dot) = rest.find(".framework/") {
-            return !rest[dot + ".framework/".len()..].contains(".framework/");
+        if let Some(dot) = memchr::memmem::find(rest, b".framework/") {
+            return memchr::memmem::find(&rest[dot + ".framework/".len()..], b".framework/")
+                .is_none();
         }
     }
     false
@@ -1764,8 +1773,8 @@ fn is_public_location(install_name: &str) -> bool {
 /// and its own re-exports are walked the same way.
 fn load_reexports<E: Target>(
     ctx: &mut Context<E>,
-    reexports: Vec<(String, String, Vec<String>)>,
-    parent: &str,
+    reexports: Vec<(Vec<u8>, PathBuf, Vec<PathBuf>)>,
+    parent: &Path,
     exports: &mut hashbrown::HashSet<&'static str>,
     tlv_exports: &mut hashbrown::HashSet<&'static str>,
     weak_exports: &mut hashbrown::HashSet<&'static str>,
@@ -1791,7 +1800,11 @@ fn load_reexports<E: Target>(
             continue;
         }
         let Some(dep) = resolve_dylib_ref(ctx, &name, &loader_dir, &loader_rpaths) else {
-            crate::warn!("{}: reexported library not found: {}", parent, name);
+            crate::warn!(
+                "{}: reexported library not found: {}",
+                parent.display(),
+                crate::util::display(&name)
+            );
             continue;
         };
         match crate::filetype::get_file_type(dep) {
@@ -1809,7 +1822,7 @@ fn load_reexports<E: Target>(
                 weak_exports.extend(dep_tbd.weak_exports.iter().copied());
                 exports.extend(dep_tbd.weak_exports);
                 for dep_name in dep_tbd.external_reexports {
-                    queue.push((dep_name.to_string(), dir_of(&dep.name), Vec::new()));
+                    queue.push((dep_name.as_bytes().to_vec(), dir_of(&dep.name), Vec::new()));
                 }
             }
             crate::filetype::FileType::Dylib => {
@@ -1842,7 +1855,11 @@ fn load_reexports<E: Target>(
                     queue.push((dep_name, dir_of(&dep.name), dep_rpaths.clone()));
                 }
             }
-            _ => crate::warn!("{}: unsupported reexported library: {}", parent, name),
+            _ => crate::warn!(
+                "{}: unsupported reexported library: {}",
+                parent.display(),
+                crate::util::display(&name)
+            ),
         }
     }
 }
@@ -1875,7 +1892,7 @@ fn check_dylib_versions<E: Target>(ctx: &Context<E>, mf: &MappedFile) {
                     "building for {}-{}, but linking with dylib '{}' which was built for newer version {}",
                     platform_name(ctx.args.platform),
                     format_version(ctx.args.platform_minos),
-                    mf.name,
+                    mf.name.display(),
                     format_version(version.minos)
                 );
             }
@@ -1883,7 +1900,7 @@ fn check_dylib_versions<E: Target>(ctx: &Context<E>, mf: &MappedFile) {
             fatal!(
                 "building for '{}', but linking in dylib ({}) built for '{}'",
                 platform_name(ctx.args.platform),
-                mf.name,
+                mf.name.display(),
                 platform_name(first.platform)
             );
         }
@@ -1895,15 +1912,15 @@ pub fn parse_dylib_binary<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFi
     let data = mf.data();
     let hdr = MachHeader::read_from(data);
 
-    let mut install_name = String::new();
+    let mut install_name: Vec<u8> = Vec::new();
     let mut current_version = encode_version(1, 0, 0);
     let mut compatibility_version = encode_version(1, 0, 0);
     let mut symtab_cmd = None;
     let mut dysymtab_cmd = None;
-    let mut reexports: Vec<String> = Vec::new();
-    let mut rpaths: Vec<String> = Vec::new();
-    let mut sub_framework: Option<String> = None;
-    let mut sub_clients: Vec<String> = Vec::new();
+    let mut reexports: Vec<Vec<u8>> = Vec::new();
+    let mut rpaths: Vec<PathBuf> = Vec::new();
+    let mut sub_framework: Option<Vec<u8>> = None;
+    let mut sub_clients: Vec<Vec<u8>> = Vec::new();
 
     let mut off = size_of::<MachHeader>();
     for _ in 0..hdr.ncmds {
@@ -1913,7 +1930,7 @@ pub fn parse_dylib_binary<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFi
                 let cmd = DylibCommand::read_from(&data[off..]);
                 let name = &data[off + cmd.nameoff as usize..off + cmd.cmdsize as usize];
                 let len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
-                install_name = String::from_utf8_lossy(&name[..len]).into_owned();
+                install_name = name[..len].to_vec();
                 current_version = cmd.current_version;
                 compatibility_version = cmd.compatibility_version;
             }
@@ -1923,23 +1940,19 @@ pub fn parse_dylib_binary<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFi
                 let cmd = DylibCommand::read_from(&data[off..]);
                 let name = &data[off + cmd.nameoff as usize..off + cmd.cmdsize as usize];
                 let len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
-                reexports.push(String::from_utf8_lossy(&name[..len]).into_owned());
+                reexports.push(name[..len].to_vec());
             }
             LC_RPATH => {
                 let cmd = DylinkerCommand::read_from(&data[off..]);
                 let name = &data[off + cmd.nameoff as usize..off + cmd.cmdsize as usize];
                 let len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
-                let mut rpath = String::from_utf8_lossy(&name[..len]).into_owned();
-                if let Some(rest) = rpath.strip_prefix("@loader_path/") {
-                    rpath = format!("{}/{rest}", dir_of(&mf.name));
-                }
-                rpaths.push(rpath);
+                rpaths.push(loader_rpath(&mf.name, &name[..len]));
             }
             LC_SUB_FRAMEWORK | LC_SUB_CLIENT => {
                 let cmd = DylinkerCommand::read_from(&data[off..]);
                 let name = &data[off + cmd.nameoff as usize..off + cmd.cmdsize as usize];
                 let len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
-                let name = String::from_utf8_lossy(&name[..len]).into_owned();
+                let name = name[..len].to_vec();
                 if lc.cmd == LC_SUB_FRAMEWORK {
                     sub_framework = Some(name);
                 } else {
@@ -1952,7 +1965,7 @@ pub fn parse_dylib_binary<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFi
     }
 
     if install_name.is_empty() {
-        fatal!("{}: dylib has no LC_ID_DYLIB", mf.name);
+        fatal!("{}: dylib has no LC_ID_DYLIB", mf.name.display());
     }
 
     let mut exports: hashbrown::HashSet<&'static str> = hashbrown::HashSet::new();
@@ -1997,7 +2010,7 @@ pub fn parse_dylib_binary<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFi
     // Each re-exported library keeps the referencing dylib's directory
     // and rpaths, since @loader_path and @rpath in an install name are
     // relative to the referrer.
-    let reexports: Vec<(String, String, Vec<String>)> =
+    let reexports: Vec<(Vec<u8>, PathBuf, Vec<PathBuf>)> =
         reexports.into_iter().map(|name| (name, dir_of(&mf.name), rpaths.clone())).collect();
     load_reexports(ctx, reexports, &mf.name, &mut exports, &mut tlv_exports, &mut weak_exports);
 
@@ -2156,7 +2169,7 @@ pub fn parse_bundle_loader<E: Target>(ctx: &mut Context<E>, mf: &'static MappedF
     let data = mf.data();
     let hdr = MachHeader::read_from(data);
     if hdr.magic != MH_MAGIC_64 || hdr.filetype != MH_EXECUTE {
-        fatal!("{}: -bundle_loader is not an executable", mf.name);
+        fatal!("{}: -bundle_loader is not an executable", mf.name.display());
     }
 
     let mut symtab_cmd = None;
@@ -2211,7 +2224,7 @@ pub fn parse_bundle_loader<E: Target>(ctx: &mut Context<E>, mf: &'static MappedF
         ctx,
         DylibFile {
             path: mf.name.clone(),
-            install_name: mf.name.clone(),
+            install_name: crate::util::path_bytes(&mf.name).to_vec(),
             current_version: encode_version(1, 0, 0),
             compatibility_version: encode_version(1, 0, 0),
             dylib_idx: BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE,
@@ -2236,9 +2249,12 @@ pub fn parse_bundle_loader<E: Target>(ctx: &mut Context<E>, mf: &'static MappedF
 
 /// Reads a dylib binary's exported symbols and reexported install
 /// names, for following reexport chains.
-fn dylib_binary_exports(
-    mf: &'static MappedFile,
-) -> (Vec<&'static str>, Vec<&'static str>, Vec<String>, Vec<String>) {
+/// What a dylib binary contributes to a re-exporting parent: its
+/// exports, its thread-local exports, the install names it re-exports
+/// in turn, and its rpaths, resolved for its location.
+type DylibExports = (Vec<&'static str>, Vec<&'static str>, Vec<Vec<u8>>, Vec<PathBuf>);
+
+fn dylib_binary_exports(mf: &'static MappedFile) -> DylibExports {
     let data = mf.data();
     let hdr = MachHeader::read_from(data);
     let mut symtab_cmd = None;
@@ -2256,17 +2272,13 @@ fn dylib_binary_exports(
                 let cmd = DylibCommand::read_from(&data[off..]);
                 let name = &data[off + cmd.nameoff as usize..off + cmd.cmdsize as usize];
                 let len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
-                reexports.push(String::from_utf8_lossy(&name[..len]).into_owned());
+                reexports.push(name[..len].to_vec());
             }
             LC_RPATH => {
                 let cmd = DylinkerCommand::read_from(&data[off..]);
                 let name = &data[off + cmd.nameoff as usize..off + cmd.cmdsize as usize];
                 let len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
-                let mut rpath = String::from_utf8_lossy(&name[..len]).into_owned();
-                if let Some(rest) = rpath.strip_prefix("@loader_path/") {
-                    rpath = format!("{}/{rest}", dir_of(&mf.name));
-                }
-                rpaths.push(rpath);
+                rpaths.push(loader_rpath(&mf.name, &name[..len]));
             }
             _ => {}
         }
@@ -2310,16 +2322,27 @@ fn dylib_binary_exports(
 /// that location (XCTest's `@loader_path/../../../../PrivateFrameworks`
 /// reaches XCTestCore only from Versions/A). A fat file's name may
 /// carry the "(for architecture ...)" suffix the loader adds.
-fn dir_of(path: &str) -> String {
-    let path = path.split_once("(for architecture").map_or(path, |(p, _)| p);
+/// An LC_RPATH entry as a search directory: @loader_path stands for the
+/// directory of the dylib that carries the entry.
+fn loader_rpath(dylib: &Path, rpath: &[u8]) -> PathBuf {
+    match rpath.strip_prefix(b"@loader_path/") {
+        Some(rest) => dir_of(dylib).join(crate::util::os_str(rest)),
+        None => PathBuf::from(crate::util::os_str(rpath)),
+    }
+}
+
+fn dir_of(path: &Path) -> PathBuf {
+    let bytes = crate::util::path_bytes(path);
+    let end = memchr::memmem::find(bytes, b"(for architecture").unwrap_or(bytes.len());
+    let path = Path::new(crate::util::os_str(&bytes[..end]));
     if let Ok(real) = std::fs::canonicalize(path)
         && let Some(dir) = real.parent()
     {
-        return dir.to_string_lossy().into_owned();
+        return dir.to_path_buf();
     }
-    match path.rsplit_once('/') {
-        Some((dir, _)) => dir.to_string(),
-        None => ".".to_string(),
+    match path.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir.to_path_buf(),
+        _ => PathBuf::from("."),
     }
 }
 
@@ -2330,24 +2353,25 @@ fn dir_of(path: &str) -> String {
 /// directory (or -executable_path).
 fn resolve_dylib_ref<E: Target>(
     ctx: &Context<E>,
-    name: &str,
-    loader_dir: &str,
-    loader_rpaths: &[String],
+    name: &[u8],
+    loader_dir: &Path,
+    loader_rpaths: &[PathBuf],
 ) -> Option<&'static MappedFile> {
-    if let Some(rest) = name.strip_prefix("@loader_path/") {
-        return find_reexport_file(ctx, &format!("{loader_dir}/{rest}"));
+    use crate::util::{os_str, path_bytes};
+    if let Some(rest) = name.strip_prefix(b"@loader_path/") {
+        return find_reexport_file(ctx, path_bytes(&loader_dir.join(os_str(rest))));
     }
-    if let Some(rest) = name.strip_prefix("@executable_path/") {
+    if let Some(rest) = name.strip_prefix(b"@executable_path/") {
         let exe = match &ctx.args.executable_path {
             Some(path) => path.clone(),
             None if ctx.args.output_type == MH_EXECUTE => ctx.args.output.clone(),
             None => return None,
         };
-        return find_reexport_file(ctx, &format!("{}/{rest}", dir_of(&exe)));
+        return find_reexport_file(ctx, path_bytes(&dir_of(&exe).join(os_str(rest))));
     }
-    if let Some(rest) = name.strip_prefix("@rpath/") {
+    if let Some(rest) = name.strip_prefix(b"@rpath/") {
         for rpath in loader_rpaths {
-            if let Some(mf) = find_reexport_file(ctx, &format!("{rpath}/{rest}")) {
+            if let Some(mf) = find_reexport_file(ctx, path_bytes(&rpath.join(os_str(rest)))) {
                 return Some(mf);
             }
         }
@@ -2360,22 +2384,26 @@ fn resolve_dylib_ref<E: Target>(
 /// under the syslibroot.
 pub fn find_reexport_file<E: Target>(
     ctx: &Context<E>,
-    install_name: &str,
+    install_name: &[u8],
 ) -> Option<&'static MappedFile> {
     // Try under each syslibroot, then the raw path: reexports between
     // freshly built dylibs use absolute install names outside any SDK.
-    let mut roots: Vec<String> = ctx.args.syslibroot.clone();
-    roots.push(String::new());
+    let mut roots: Vec<PathBuf> = ctx.args.syslibroot.clone();
+    roots.push(PathBuf::new());
 
     for root in &roots {
-        let base = if root.is_empty() {
-            std::path::PathBuf::from(install_name)
+        let base = if root.as_os_str().is_empty() {
+            PathBuf::from(crate::util::os_str(install_name))
         } else {
-            std::path::Path::new(root).join(install_name.trim_start_matches('/'))
+            let mut relative = install_name;
+            while let Some(rest) = relative.strip_prefix(b"/") {
+                relative = rest;
+            }
+            root.join(crate::util::os_str(relative))
         };
-        let mut candidates = vec![base.with_extension("tbd")];
-        candidates.push(std::path::PathBuf::from(format!("{}.tbd", base.display())));
-        candidates.push(base);
+        let mut with_tbd = base.clone().into_os_string();
+        with_tbd.push(".tbd");
+        let candidates = [base.with_extension("tbd"), PathBuf::from(with_tbd), base];
         for path in candidates {
             if let Some(mf) = MappedFile::open(&path) {
                 // A universal binary (Xcode's XCTestCore, re-exported
@@ -2457,10 +2485,10 @@ pub fn parse_dylib<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFile) -> 
     let mut tlv_exports: hashbrown::HashSet<&'static str> = tbd.tlv_exports.into_iter().collect();
     exports.extend(tlv_exports.iter().copied());
 
-    let reexports: Vec<(String, String, Vec<String>)> = tbd
+    let reexports: Vec<(Vec<u8>, PathBuf, Vec<PathBuf>)> = tbd
         .external_reexports
         .into_iter()
-        .map(|name| (name.to_string(), dir_of(&mf.name), Vec::new()))
+        .map(|name| (name.as_bytes().to_vec(), dir_of(&mf.name), Vec::new()))
         .collect();
     load_reexports(ctx, reexports, &mf.name, &mut exports, &mut tlv_exports, &mut weak_exports);
 
@@ -2469,7 +2497,7 @@ pub fn parse_dylib<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFile) -> 
         ctx,
         DylibFile {
             path: mf.name.clone(),
-            install_name: tbd.install_name,
+            install_name: tbd.install_name.into_bytes(),
             current_version: tbd.current_version,
             compatibility_version: encode_version(1, 0, 0),
             dylib_idx: next_dylib_ordinal(ctx),
@@ -2503,7 +2531,7 @@ fn add_dylib<E: Target>(ctx: &mut Context<E>, dylib: DylibFile) -> usize {
     if ctx.args.application_extension && !dylib.is_app_extension_safe {
         crate::warn!(
             "linking against a dylib which is not safe for use in application extensions: {}",
-            dylib.install_name
+            crate::util::display(&dylib.install_name)
         );
     }
 
@@ -2512,20 +2540,24 @@ fn add_dylib<E: Target>(ctx: &mut Context<E>, dylib: DylibFile) -> usize {
     // leaf name with any "lib" prefix and extension shed - the same
     // derivation ld64 uses.
     if let Some(umbrella) = &dylib.sub_framework {
-        let client = match &ctx.args.client_name {
+        let client: Vec<u8> = match &ctx.args.client_name {
             Some(name) => name.clone(),
             None => {
-                let leaf = ctx.args.output.rsplit('/').next().unwrap_or("");
-                let stem = leaf.split('.').next().unwrap_or(leaf);
-                stem.strip_prefix("lib").unwrap_or(stem).to_string()
+                let leaf = ctx
+                    .args
+                    .output
+                    .file_name()
+                    .map_or(&[][..], |f| std::os::unix::ffi::OsStrExt::as_bytes(f));
+                let stem = leaf.split(|&b| b == b'.').next().unwrap_or(leaf);
+                stem.strip_prefix(b"lib").unwrap_or(stem).to_vec()
             }
         };
-        let ours = ctx.args.umbrella.as_deref() == Some(umbrella.as_str());
+        let ours = ctx.args.umbrella.as_deref() == Some(umbrella.as_slice());
         if !ours && client != *umbrella && !dylib.sub_clients.contains(&client) {
             crate::error!(
                 "cannot link directly with {}: not an allowed client of umbrella framework {}",
-                dylib.install_name,
-                umbrella
+                crate::util::display(&dylib.install_name),
+                crate::util::display(umbrella)
             );
         }
     }

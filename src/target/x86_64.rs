@@ -1,5 +1,7 @@
 //! The x86-64 target.
 
+use std::path::Path;
+
 use crate::context::Context;
 use crate::fatal;
 use crate::input_sections::{Reloc, RelocTarget};
@@ -149,7 +151,7 @@ impl Target for X86_64 {
     }
 
     fn read_relocs(
-        file_name: &str,
+        file_name: &Path,
         sections: &[MachSection],
         hdr: &MachSection,
         file_data: &[u8],
@@ -158,6 +160,8 @@ impl Target for X86_64 {
         let mut vec = Vec::with_capacity(rels.len());
 
         for (i, r) in rels.iter().enumerate() {
+            // Diagnostics spell the path lossily.
+            let file_name = file_name.display();
             // On x86-64 every relocation's addend is embedded in the
             // relocated field.
             let off = hdr.offset as usize + r.r_address as usize;
@@ -248,7 +252,7 @@ impl Target for X86_64 {
                         if val > u32::MAX as u64 {
                             fatal!(
                                 "{}: 32-bit absolute address out of range ({val:#x})",
-                                ctx.objs[obj].mf.name
+                                ctx.objs[obj].mf.name.display()
                             );
                         }
                         write32(loc, val as u32);

@@ -222,7 +222,7 @@ fn read_form<'a>(
 /// DIE), read from its __DWARF sections. DWARF versions 2 through 5;
 /// strings inline, in __debug_str or __debug_line_str, or indexed
 /// through __debug_str_offsets.
-pub fn compile_unit_name(file: &[u8], sects: &[MachSection]) -> Option<(String, String)> {
+pub fn compile_unit_name(file: &[u8], sects: &[MachSection]) -> Option<(Vec<u8>, Vec<u8>)> {
     let section = |name: &str| -> Option<&[u8]> {
         let s = sects.iter().find(|s| s.segname() == "__DWARF" && s.sectname() == name)?;
         file.get(s.offset as usize..(s.offset as u64 + s.size) as usize)
@@ -294,7 +294,7 @@ pub fn compile_unit_name(file: &[u8], sects: &[MachSection]) -> Option<(String, 
         }
     }
 
-    let resolve = |v: Value| -> Option<String> {
+    let resolve = |v: Value| -> Option<Vec<u8>> {
         let bytes = match v {
             Value::Inline(b) => b,
             Value::Strp(off) => cstr_at(str_sect, off as usize)?,
@@ -309,7 +309,7 @@ pub fn compile_unit_name(file: &[u8], sects: &[MachSection]) -> Option<(String, 
             }
             Value::Other(_) => return None,
         };
-        Some(String::from_utf8_lossy(bytes).into_owned())
+        Some(bytes.to_vec())
     };
     let name = name.and_then(resolve)?;
     let comp_dir = comp_dir.and_then(resolve).unwrap_or_default();

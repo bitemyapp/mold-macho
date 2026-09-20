@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::ffi::{OsStr, OsString};
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::cmdline::{self, InputArg};
@@ -42,7 +41,7 @@ pub fn main(
 fn detect_target(args: &cmdline::Args) -> &'static str {
     for input in &args.inputs {
         if let InputArg::File(path) = input
-            && let Some(mf) = MappedFile::open(Path::new(path))
+            && let Some(mf) = MappedFile::open(path)
             && let Some(name) = crate::filetype::get_macho_target(mf.data())
         {
             return name;

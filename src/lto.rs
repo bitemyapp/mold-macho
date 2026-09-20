@@ -8,6 +8,7 @@
 //! other input.
 
 use std::ffi::{CStr, CString, c_char, c_void};
+use std::path::Path;
 
 use crate::fatal;
 
@@ -79,8 +80,9 @@ const DEFAULT_LTO_LIBRARY: &str =
 
 /// Loads libLTO from the given path (from -lto_library, with a plain
 /// library-name fallback that relies on the dynamic loader's search).
-pub fn load_plugin(path: Option<&str>) -> Plugin {
-    let path = CString::new(path.unwrap_or(DEFAULT_LTO_LIBRARY)).unwrap();
+pub fn load_plugin(path: Option<&Path>) -> Plugin {
+    let path = CString::new(path.map_or(DEFAULT_LTO_LIBRARY.as_bytes(), crate::util::path_bytes))
+        .unwrap_or_else(|_| fatal!("-lto_library: path contains a NUL byte"));
     // SAFETY: dlopen/dlsym with valid NUL-terminated strings.
     unsafe {
         let handle = libc::dlopen(path.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL);
@@ -123,8 +125,8 @@ pub struct LtoSymbol {
 }
 
 /// Creates a module from a bitcode buffer and lists its symbols.
-pub fn parse_module(plugin: &Plugin, data: &[u8], name: &str) -> (usize, Vec<LtoSymbol>) {
-    let cname = CString::new(name).unwrap_or_default();
+pub fn parse_module(plugin: &Plugin, data: &[u8], name: &Path) -> (usize, Vec<LtoSymbol>) {
+    let cname = CString::new(crate::util::path_bytes(name)).unwrap_or_default();
     // SAFETY: the buffer is valid for the call's duration; libLTO copies
     // what it needs.
     let module = unsafe {
@@ -135,7 +137,7 @@ pub fn parse_module(plugin: &Plugin, data: &[u8], name: &str) -> (usize, Vec<Lto
         )
     };
     if module.is_null() {
-        fatal!("{name}: lto_module_create failed: {}", plugin.error_message());
+        fatal!("{}: lto_module_create failed: {}", name.display(), plugin.error_message());
     }
 
     let mut syms = Vec::new();
