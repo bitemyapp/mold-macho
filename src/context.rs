@@ -39,6 +39,40 @@ use crate::symbol::{SymbolId, SymbolTable};
 use crate::target::Target;
 use crate::util::perf::Timers;
 
+// Keep immutable and mutable chunk lookup in the same static match.
+macro_rules! chunk_header {
+    ($ctx:ident, $id:ident $(, $mutable:tt)?) => {
+        match $id {
+            ChunkId::MachHeader => &$($mutable)? $ctx.mach_header.hdr,
+            ChunkId::Output(id) => &$($mutable)? $ctx.output_sections[id.index()].hdr,
+            ChunkId::Stubs => &$($mutable)? $ctx.stubs.hdr,
+            ChunkId::StubHelper => &$($mutable)? $ctx.stub_helper.hdr,
+            ChunkId::LazyPtrs => &$($mutable)? $ctx.lazy_ptrs.hdr,
+            ChunkId::Got => &$($mutable)? $ctx.got.hdr,
+            ChunkId::ThreadPtrs => &$($mutable)? $ctx.thread_ptrs.hdr,
+            ChunkId::ObjcStubs => &$($mutable)? $ctx.objc_stubs.hdr,
+            ChunkId::ObjcMethlist => &$($mutable)? $ctx.objc_methlist.hdr,
+            ChunkId::ObjcImageInfo => &$($mutable)? $ctx.objc_imageinfo.hdr,
+            ChunkId::SectCreate(i) => &$($mutable)? $ctx.sectcreate_sections[i as usize].hdr,
+            ChunkId::InitOffsets => &$($mutable)? $ctx.init_offsets.hdr,
+            ChunkId::UnwindInfo => &$($mutable)? $ctx.unwind_info.hdr,
+            ChunkId::EhFrame => &$($mutable)? $ctx.eh_frame.hdr,
+            ChunkId::RebaseInfo => &$($mutable)? $ctx.rebase_info.hdr,
+            ChunkId::BindInfo => &$($mutable)? $ctx.bind_info.hdr,
+            ChunkId::WeakBindInfo => &$($mutable)? $ctx.weak_bind_info.hdr,
+            ChunkId::LazyBindInfo => &$($mutable)? $ctx.lazy_bind_info.hdr,
+            ChunkId::ChainedFixups => &$($mutable)? $ctx.chained_fixups.hdr,
+            ChunkId::ExportTrie => &$($mutable)? $ctx.export_trie.hdr,
+            ChunkId::FunctionStarts => &$($mutable)? $ctx.function_starts.hdr,
+            ChunkId::DataInCode => &$($mutable)? $ctx.data_in_code.hdr,
+            ChunkId::IndirectSymtab => &$($mutable)? $ctx.indirect_symtab.hdr,
+            ChunkId::Symtab => &$($mutable)? $ctx.symtab.hdr,
+            ChunkId::Strtab => &$($mutable)? $ctx.strtab.hdr,
+            ChunkId::CodeSignature => &$($mutable)? $ctx.code_signature.hdr,
+        }
+    };
+}
+
 pub struct Context<E: Target> {
     pub args: Args,
     pub objs: Vec<ObjectFile>,
@@ -207,65 +241,11 @@ impl<E: Target> Context<E> {
 
     /// The header of any chunk.
     pub fn chunk_header(&self, id: ChunkId) -> &ChunkHeader {
-        match id {
-            ChunkId::MachHeader => &self.mach_header.hdr,
-            ChunkId::Output(id) => &self.output_sections[id.index()].hdr,
-            ChunkId::Stubs => &self.stubs.hdr,
-            ChunkId::StubHelper => &self.stub_helper.hdr,
-            ChunkId::LazyPtrs => &self.lazy_ptrs.hdr,
-            ChunkId::Got => &self.got.hdr,
-            ChunkId::ThreadPtrs => &self.thread_ptrs.hdr,
-            ChunkId::ObjcStubs => &self.objc_stubs.hdr,
-            ChunkId::ObjcMethlist => &self.objc_methlist.hdr,
-            ChunkId::ObjcImageInfo => &self.objc_imageinfo.hdr,
-            ChunkId::SectCreate(i) => &self.sectcreate_sections[i as usize].hdr,
-            ChunkId::InitOffsets => &self.init_offsets.hdr,
-            ChunkId::UnwindInfo => &self.unwind_info.hdr,
-            ChunkId::EhFrame => &self.eh_frame.hdr,
-            ChunkId::RebaseInfo => &self.rebase_info.hdr,
-            ChunkId::BindInfo => &self.bind_info.hdr,
-            ChunkId::WeakBindInfo => &self.weak_bind_info.hdr,
-            ChunkId::LazyBindInfo => &self.lazy_bind_info.hdr,
-            ChunkId::ChainedFixups => &self.chained_fixups.hdr,
-            ChunkId::ExportTrie => &self.export_trie.hdr,
-            ChunkId::FunctionStarts => &self.function_starts.hdr,
-            ChunkId::DataInCode => &self.data_in_code.hdr,
-            ChunkId::IndirectSymtab => &self.indirect_symtab.hdr,
-            ChunkId::Symtab => &self.symtab.hdr,
-            ChunkId::Strtab => &self.strtab.hdr,
-            ChunkId::CodeSignature => &self.code_signature.hdr,
-        }
+        chunk_header!(self, id)
     }
 
     pub fn chunk_header_mut(&mut self, id: ChunkId) -> &mut ChunkHeader {
-        match id {
-            ChunkId::MachHeader => &mut self.mach_header.hdr,
-            ChunkId::Output(id) => &mut self.output_sections[id.index()].hdr,
-            ChunkId::Stubs => &mut self.stubs.hdr,
-            ChunkId::StubHelper => &mut self.stub_helper.hdr,
-            ChunkId::LazyPtrs => &mut self.lazy_ptrs.hdr,
-            ChunkId::Got => &mut self.got.hdr,
-            ChunkId::ThreadPtrs => &mut self.thread_ptrs.hdr,
-            ChunkId::ObjcStubs => &mut self.objc_stubs.hdr,
-            ChunkId::ObjcMethlist => &mut self.objc_methlist.hdr,
-            ChunkId::ObjcImageInfo => &mut self.objc_imageinfo.hdr,
-            ChunkId::SectCreate(i) => &mut self.sectcreate_sections[i as usize].hdr,
-            ChunkId::InitOffsets => &mut self.init_offsets.hdr,
-            ChunkId::UnwindInfo => &mut self.unwind_info.hdr,
-            ChunkId::EhFrame => &mut self.eh_frame.hdr,
-            ChunkId::RebaseInfo => &mut self.rebase_info.hdr,
-            ChunkId::BindInfo => &mut self.bind_info.hdr,
-            ChunkId::WeakBindInfo => &mut self.weak_bind_info.hdr,
-            ChunkId::LazyBindInfo => &mut self.lazy_bind_info.hdr,
-            ChunkId::ChainedFixups => &mut self.chained_fixups.hdr,
-            ChunkId::ExportTrie => &mut self.export_trie.hdr,
-            ChunkId::FunctionStarts => &mut self.function_starts.hdr,
-            ChunkId::DataInCode => &mut self.data_in_code.hdr,
-            ChunkId::IndirectSymtab => &mut self.indirect_symtab.hdr,
-            ChunkId::Symtab => &mut self.symtab.hdr,
-            ChunkId::Strtab => &mut self.strtab.hdr,
-            ChunkId::CodeSignature => &mut self.code_signature.hdr,
-        }
+        chunk_header!(self, id, mut)
     }
 
     pub fn output_section(&self, id: OutputSectionId) -> &OutputSection {
