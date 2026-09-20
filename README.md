@@ -58,7 +58,7 @@ behavior involved in that change.
 
 ## Tests
 
-Tests are shell scripts under `tests/cases/`, one feature per script,
+Tests are shell scripts under `tests/`, one feature per script,
 driving the real toolchain through `cc --ld-path=...`; a harness runs
 each for arm64 and (under Rosetta) x86-64:
 

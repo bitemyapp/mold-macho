@@ -40,8 +40,7 @@ enum Outcome {
 }
 
 fn run_one(job: &TestJob, root: &Path, linker: &Path) -> (Outcome, String) {
-    let output = Command::new("bash")
-        .arg(&job.script)
+    let output = Command::new(&job.script)
         .current_dir(root)
         .env("mold", linker)
         .env("ARCH", job.arch)
@@ -92,7 +91,7 @@ pub fn run(cases: &Path, linker: &Path) -> ExitCode {
     }
 
     // Tests write their outputs under out/test in the repository root.
-    let root = cases.parent().unwrap().parent().unwrap().to_path_buf();
+    let root = cases.parent().unwrap().to_path_buf();
     let linker = std::fs::canonicalize(linker).expect("linker not found");
 
     let jobs = &jobs;
@@ -154,7 +153,7 @@ mod tests {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&dir).unwrap();
-        let common = Path::new(env!("CARGO_MANIFEST_DIR")).join("cases/common.inc");
+        let common = Path::new(env!("CARGO_MANIFEST_DIR")).join("common.inc");
         let output = Command::new("bash")
             .args(["-c", &format!("source \"$1\"\n{body}"), "harness-test"])
             .arg(common)

@@ -6,4 +6,7 @@ description = "Test support for mold's shell test suite"
 license.workspace = true
 publish = false
 
+[lib]
+path = "lib.rs"
+
 [dependencies]
