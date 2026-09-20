@@ -1,4 +1,6 @@
-//! Small utility functions.
+//! Small helpers shared across the linker.
+
+pub mod perf;
 
 /// Rounds `val` up to the next multiple of `align`. `align` must be a
 /// power of two.

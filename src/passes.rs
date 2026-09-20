@@ -22,19 +22,6 @@ use crate::target::RelocClass;
 use crate::target::Target;
 use crate::util::align_to;
 
-/// Times a sub-phase to stderr when MOLD_TIMING is set - the
-/// fine-grained companion to -print_statistics.
-macro_rules! t {
-    ($name:expr, $e:expr) => {{
-        let t0 = std::time::Instant::now();
-        let r = $e;
-        if std::env::var_os("MOLD_TIMING").is_some() {
-            eprintln!("    {} {:?}", $name, t0.elapsed());
-        }
-        r
-    }};
-}
-
 /// Returns the directories to search for `-l` libraries, in order. A
 /// library path that exists under a syslibroot is looked up there; the
 /// default search path is the syslibroot's /usr/lib.
@@ -182,7 +169,7 @@ fn collect_file<E: Target>(
         FileType::Tapi | FileType::Dylib => {
             let first = ctx.dylibs.len();
             let idx = if get_file_type(mf) == FileType::Tapi {
-                t!("parse_dylib(tbd)", input_files::parse_dylib(ctx, mf))
+                input_files::parse_dylib(ctx, mf)
             } else {
                 input_files::parse_dylib_binary(ctx, mf)
             };
@@ -242,15 +229,12 @@ fn collect_file<E: Target>(
 fn load_pending<E: Target>(ctx: &mut Context<E>, pending: Vec<PendingObject>) {
     use rayon::prelude::*;
     let relocatable = ctx.args.relocatable;
-    let staged: Vec<input_files::StagedObject> = t!(
-        "stage",
-        pending
-            .par_iter()
-            .map(|p| {
-                input_files::stage_object::<E>(p.mf, p.alive, p.hidden, p.priority, relocatable)
-            })
-            .collect()
-    );
+    let t = ctx.timer("stage");
+    let staged: Vec<input_files::StagedObject> = pending
+        .par_iter()
+        .map(|p| input_files::stage_object::<E>(p.mf, p.alive, p.hidden, p.priority, relocatable))
+        .collect();
+    drop(t);
 
     // Intern every staged object's global names in one parallel batch
     // (mold's sharded symbol table), so the serial integration loop
@@ -277,9 +261,13 @@ fn load_pending<E: Target>(ctx: &mut Context<E>, pending: Vec<PendingObject>) {
     for v in per_obj {
         batch.extend(v);
     }
-    let ids = t!("gather", ctx.symbols.gather(&batch));
+    let t = ctx.timer("gather");
+    let ids = ctx.symbols.gather(&batch);
+    drop(t);
 
-    t!("integrate", input_files::integrate_objects(ctx, staged, ids, counts));
+    let t = ctx.timer("integrate");
+    input_files::integrate_objects(ctx, staged, ids, counts);
+    drop(t);
 }
 
 pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
@@ -447,7 +435,7 @@ pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
         let mf = MappedFile::must_open(Path::new(&path));
         crate::input_files::parse_bundle_loader(ctx, mf);
     }
-    t!("load_pending", load_pending(ctx, queue));
+    load_pending(ctx, queue);
 }
 
 /// Acts on auto-link options (LC_LINKER_OPTION) of live objects: each
@@ -4581,7 +4569,7 @@ pub fn create_output_symtab<E: Target>(
         data.entries.push((NList { n_strx, n_type: N_AST, ..Default::default() }, None));
     }
 
-    let __t = std::time::Instant::now();
+    let mut t = ctx.timer("symtab-stabs");
     // Debug stabs. Mach-O binaries don't carry DWARF; instead, for each
     // object with debug info the symbol table gets stab entries telling
     // the debugger where the object file is (N_OSO) and where its
@@ -4640,10 +4628,8 @@ pub fn create_output_symtab<E: Target>(
         }
     }
 
-    if std::env::var_os("MOLD_TIMING").is_some() {
-        eprintln!("      symtab-stabs {:?}", __t.elapsed());
-    }
-    let __t = std::time::Instant::now();
+    t.stop();
+    let mut t = ctx.timer("symtab-locals");
 
     // Local symbols (-x drops them), planned per object in parallel
     // - mold's plan_symtab per file - and appended in object order.
@@ -4746,10 +4732,8 @@ pub fn create_output_symtab<E: Target>(
             }
         }
     }
-    if std::env::var_os("MOLD_TIMING").is_some() {
-        eprintln!("      symtab-locals {:?}", __t.elapsed());
-    }
-    let __t = std::time::Instant::now();
+    t.stop();
+    let t = ctx.timer("symtab-globals");
     // One parallel pass classifies the whole symbol table - private
     // externals (emitted among the locals), defined globals and
     // undefineds - instead of three full scans over millions of
@@ -5017,9 +5001,7 @@ pub fn create_output_symtab<E: Target>(
         ent.1 = None;
     }
 
-    if std::env::var_os("MOLD_TIMING").is_some() {
-        eprintln!("      symtab-globals {:?}", __t.elapsed());
-    }
+    drop(t);
 
     data
 }
@@ -5057,7 +5039,8 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
             // runs inside their arm of the task group and the fixup
             // streams, function starts and data-in-code build under it.
             let sorted_globals_of = || -> Vec<crate::symbol::SymbolId> {
-                t!("globals_sort", {
+                let _t = shared.timer("globals_sort");
+                {
                     use rayon::prelude::*;
                     let mut v: Vec<crate::symbol::SymbolId> = (0..shared.symbols.syms.len())
                         .into_par_iter()
@@ -5076,19 +5059,20 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                         crate::util::name_sort_key(shared.symbols[i].name())
                     });
                     v
-                })
+                }
             };
             let ((symtab, trie), (streams, (starts, dice))) = rayon::join(
                 || {
                     let sorted_globals = sorted_globals_of();
                     let sorted_globals = &sorted_globals;
                     rayon::join(
-                        || t!("symtab", create_output_symtab(shared, sorted_globals)),
                         || {
-                            t!(
-                                "trie_encode",
-                                chunks::export_trie::encode_export_trie(shared, sorted_globals)
-                            )
+                            let _t = shared.timer("symtab");
+                            create_output_symtab(shared, sorted_globals)
+                        },
+                        || {
+                            let _t = shared.timer("trie_encode");
+                            chunks::export_trie::encode_export_trie(shared, sorted_globals)
                         },
                     )
                 },
@@ -5096,14 +5080,20 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                     rayon::join(
                         || {
                             if use_chained {
-                                Streams::Chained(t!(
-                                    "chained_fixups",
-                                    chunks::chained_fixups::build_chained_fixups(shared)
+                                let _t = shared.timer("chained_fixups");
+                                Streams::Chained(chunks::chained_fixups::build_chained_fixups(
+                                    shared,
                                 ))
                             } else {
                                 let (rebase, bind) = rayon::join(
-                                    || t!("rebase_info", chunks::rebase_info::build(shared)),
-                                    || t!("bind_info", chunks::bind_info::build(shared)),
+                                    || {
+                                        let _t = shared.timer("rebase_info");
+                                        chunks::rebase_info::build(shared)
+                                    },
+                                    || {
+                                        let _t = shared.timer("bind_info");
+                                        chunks::bind_info::build(shared)
+                                    },
                                 );
                                 let (lazy, lazy_offsets) = chunks::lazy_bind_info::build(shared);
                                 let weak = chunks::weak_bind_info::build(shared);
@@ -5112,8 +5102,14 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                         },
                         || {
                             rayon::join(
-                                || t!("function_starts", chunks::function_starts::build(shared)),
-                                || t!("data_in_code", chunks::data_in_code::build(shared)),
+                                || {
+                                    let _t = shared.timer("function_starts");
+                                    chunks::function_starts::build(shared)
+                                },
+                                || {
+                                    let _t = shared.timer("data_in_code");
+                                    chunks::data_in_code::build(shared)
+                                },
                             )
                         },
                     )
@@ -5190,8 +5186,10 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                 // cells the encoding cannot know yet (GOT addresses)
                 // come back as a patch list for the copy phase.
                 ChunkId::UnwindInfo => {
-                    let (data, personalities) =
-                        t!("unwind_encode", chunks::unwind_info::encode_unwind_info(ctx));
+                    let (data, personalities) = {
+                        let _t = ctx.timer("unwind_encode");
+                        chunks::unwind_info::encode_unwind_info(ctx)
+                    };
                     let len = data.len() as u64;
                     ctx.unwind_info.contents = data;
                     ctx.unwind_info.personalities = personalities;
@@ -5495,12 +5493,17 @@ pub fn copy_chunks<E: Target>(
         consumed = off + size;
     }
 
-    t!("par-copy", slices.into_par_iter().for_each(|(id, slice)| chunks::copy_buf(ctx, id, slice)));
+    let t = ctx.timer("copy_chunks");
+    slices.into_par_iter().for_each(|(id, slice)| chunks::copy_buf(ctx, id, slice));
+    drop(t);
 
     if ctx.use_chained_fixups() {
-        t!("write-chains", chunks::chained_fixups::write_fixup_chains(ctx, buf));
+        let _t = ctx.timer("write_fixup_chains");
+        chunks::chained_fixups::write_fixup_chains(ctx, buf);
     }
-    t!("loh", E::apply_optimization_hints(ctx, buf));
+    let t = ctx.timer("apply_optimization_hints");
+    E::apply_optimization_hints(ctx, buf);
+    drop(t);
 
     let hdr_end = ctx.mach_header.hdr.size as usize;
     let sig_start = if ctx.chunks.contains(&ChunkId::CodeSignature) {
@@ -5512,7 +5515,9 @@ pub fn copy_chunks<E: Target>(
 
     // Nothing below writes between the header and the symbol table.
     out.queue(hdr_end, symtab_start - hdr_end);
-    t!("copy_symtab", chunks::symtab::copy_symtab(ctx, buf));
+    let t = ctx.timer("copy_symtab");
+    chunks::symtab::copy_symtab(ctx, buf);
+    drop(t);
     out.queue(symtab_start, sig_start - symtab_start);
     chunks::copy_mach_header(ctx, buf);
 
@@ -5530,10 +5535,12 @@ pub fn copy_chunks<E: Target>(
     // basename); unsigned output hashes its pages the same way.
     let mut hashes: Vec<[u8; 32]> = Vec::new();
     if ctx.args.uuid || ctx.args.adhoc_codesign {
-        t!("page-hashes", hashes = chunks::code_signature::page_hashes(&buf[..sig_start]));
+        let _t = ctx.timer("page_hashes");
+        hashes = chunks::code_signature::page_hashes(&buf[..sig_start]);
     }
     if ctx.args.uuid {
-        t!("uuid", {
+        let _t = ctx.timer("uuid");
+        {
             let flat: Vec<u8> = hashes.concat();
             let mut hash = [0; 32];
             crate::util::sha256(&flat, &mut hash);
@@ -5543,12 +5550,13 @@ pub fn copy_chunks<E: Target>(
             *ctx.uuid.lock().unwrap() = uuid;
             chunks::copy_mach_header(ctx, buf);
             chunks::code_signature::rehash_pages(&buf[..sig_start], &mut hashes, 0..hdr_end);
-        });
+        }
     }
     out.queue(0, hdr_end);
 
     if ctx.args.adhoc_codesign {
-        t!("codesign", chunks::code_signature::write(ctx, buf, &hashes));
+        let _t = ctx.timer("write_code_signature");
+        chunks::code_signature::write(ctx, buf, &hashes);
     }
     out.queue(sig_start, buf.len() - sig_start);
 }

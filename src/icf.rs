@@ -318,7 +318,8 @@ pub fn icf_sections<E: Target>(ctx: &mut Context<E>) {
             && !ctx.objs[isec.file as usize].has_debug_info
     };
 
-    let __t = std::time::Instant::now();
+    let _t_all = ctx.timer("icf");
+    let mut t = ctx.timer("icf-prep");
     let candidates: Vec<usize> =
         (0..ctx.isecs.len()).into_par_iter().filter(|&i| is_candidate(ctx, i)).collect();
     if candidates.len() < 2 {
@@ -406,10 +407,8 @@ pub fn icf_sections<E: Target>(ctx: &mut Context<E>) {
 
     // Refinement rounds propagate hashes along edges; log2(n) rounds
     // reach across any chain of distinct shapes.
-    if std::env::var_os("MOLD_TIMING").is_some() {
-        eprintln!("      icf-prep {:?} candidates {}", __t.elapsed(), candidates.len());
-    }
-    let __t = std::time::Instant::now();
+    t.stop();
+    let mut t = ctx.timer("icf-rounds");
 
     // Content is hashed exactly once; the refinement rounds mix only
     // fixed-size digests - each candidate's base digest plus its
@@ -505,10 +504,8 @@ pub fn icf_sections<E: Target>(ctx: &mut Context<E>) {
         prev_classes = n;
     }
 
-    if std::env::var_os("MOLD_TIMING").is_some() {
-        eprintln!("      icf-rounds {:?}", __t.elapsed());
-    }
-    let __t = std::time::Instant::now();
+    t.stop();
+    let _t = ctx.timer("icf-fold");
 
     // The final counting round elected a leader (lowest candidate index)
     // for every digest; look each candidate's leader up and fold the
@@ -552,8 +549,5 @@ pub fn icf_sections<E: Target>(ctx: &mut Context<E>) {
             let a = ctx.isecs[member].p2align;
             ctx.isecs[leader].p2align = ctx.isecs[leader].p2align.max(a);
         }
-    }
-    if std::env::var_os("MOLD_TIMING").is_some() {
-        eprintln!("      icf-fold {:?}", __t.elapsed());
     }
 }

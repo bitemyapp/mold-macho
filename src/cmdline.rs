@@ -229,8 +229,9 @@ pub struct Args {
     /// -ignore_optimization_hints: skip LC_LINKER_OPTIMIZATION_HINT
     /// processing.
     pub ignore_optimization_hints: bool,
-    /// -print_statistics: report phase timings and sizes to stderr.
-    pub print_statistics: bool,
+    /// -print_statistics: report pass timings and sizes to stderr;
+    /// mold's --perf.
+    pub perf: bool,
     /// -warn_duplicate_libraries (default): warn when one library is
     /// named more than once.
     pub warn_duplicate_libraries: bool,
@@ -328,7 +329,7 @@ impl Default for Args {
             client_name: None,
             trace: false,
             ignore_optimization_hints: false,
-            print_statistics: false,
+            perf: false,
             warn_duplicate_libraries: true,
             local_strip_list: Vec::new(),
             local_keep_list: None,
@@ -656,7 +657,7 @@ pub fn parse_args(cmdline: &[Cow<'_, OsStr>]) -> Args {
             "-client_name" => args.client_name = Some(next_arg(&mut i).to_string()),
             "-t" => args.trace = true,
             "-ignore_optimization_hints" => args.ignore_optimization_hints = true,
-            "-print_statistics" => args.print_statistics = true,
+            "-print_statistics" => args.perf = true,
             "-warn_duplicate_libraries" => args.warn_duplicate_libraries = true,
             "-no_warn_duplicate_libraries" => args.warn_duplicate_libraries = false,
             "-non_global_symbols_strip_list" => {

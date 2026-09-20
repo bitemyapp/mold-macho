@@ -78,23 +78,17 @@ pub fn link<E: Target>(cmdline: Arc<[Cow<'static, OsStr>]>) -> Result<i32, &'sta
     crate::error::set_fatal_warnings(ctx.args.fatal_warnings);
     crate::error::set_demangle(ctx.args.demangle);
 
-    // -print_statistics phase timer, in the spirit of mold's --perf.
-    let t0 = std::time::Instant::now();
-    let mut phases: Vec<(&str, std::time::Duration)> = Vec::new();
-    let mut last = t0;
-    let mut lap = |phases: &mut Vec<(&str, std::time::Duration)>, name: &'static str| {
-        let now = std::time::Instant::now();
-        phases.push((name, now - last));
-        last = now;
-    };
+    let t_all = ctx.timer("all");
 
     // Read every input eagerly, then resolve; loading auto-linked
     // libraries or the LTO output adds inputs, so resolution repeats
     // until the input set is stable.
+    let t = ctx.timer("read_input_files");
     passes::read_input_files(&mut ctx);
+    drop(t);
     passes::create_internal_file(&mut ctx);
     crate::error::checkpoint();
-    lap(&mut phases, "parse");
+    let mut t = ctx.timer("resolve_symbols");
     loop {
         passes::resolve_symbols(&mut ctx);
         match passes::load_autolink_deps(&mut ctx) {
@@ -119,9 +113,11 @@ pub fn link<E: Target>(cmdline: Arc<[Cow<'static, OsStr>]>) -> Result<i32, &'sta
             }
         }
     }
-    lap(&mut phases, "resolve");
+    t.stop();
     passes::check_input_versions(&ctx);
+    let t = ctx.timer("remove_unreachable_files");
     passes::remove_unreachable_files(&mut ctx);
+    drop(t);
     passes::check_duplicate_symbols(&ctx);
     crate::error::checkpoint();
     if ctx.args.relocatable {
@@ -144,59 +140,40 @@ pub fn link<E: Target>(cmdline: Arc<[Cow<'static, OsStr>]>) -> Result<i32, &'sta
         return Ok(0);
     }
     passes::convert_init_offsets(&mut ctx);
-    {
-        let tt = std::time::Instant::now();
-        passes::merge_literals(&mut ctx);
-        passes::coalesce_objc_refs(&mut ctx);
-        if std::env::var_os("MOLD_TIMING").is_some() {
-            eprintln!("    merge_literals {:?}", tt.elapsed());
-        }
-    }
-    macro_rules! tp {
-        ($name:expr, $e:expr) => {{
-            let tt = std::time::Instant::now();
+    let t = ctx.timer("merge_literals");
+    passes::merge_literals(&mut ctx);
+    passes::coalesce_objc_refs(&mut ctx);
+    drop(t);
+    macro_rules! timed {
+        ($name:literal, $e:expr) => {{
+            let t = ctx.timer($name);
             $e;
-            if std::env::var_os("MOLD_TIMING").is_some() {
-                eprintln!("    {} {:?}", $name, tt.elapsed());
-            }
+            drop(t);
         }};
     }
-    tp!("add_synthetic_symbols", passes::add_synthetic_symbols(&mut ctx));
-    tp!("convert_common_symbols", passes::convert_common_symbols(&mut ctx));
-    tp!("create_objc_msgsend_stubs", passes::create_objc_msgsend_stubs(&mut ctx));
-    tp!("auto_hide_weak_defs", passes::auto_hide_weak_defs(&mut ctx));
-    tp!("hide_all_exports", passes::hide_all_exports(&mut ctx));
-    tp!("create_symbol_reexports", passes::create_symbol_reexports(&mut ctx));
-    tp!("coalesce_weak_defs", passes::coalesce_weak_defs(&mut ctx));
+    timed!("add_synthetic_symbols", passes::add_synthetic_symbols(&mut ctx));
+    timed!("convert_common_symbols", passes::convert_common_symbols(&mut ctx));
+    timed!("create_objc_msgsend_stubs", passes::create_objc_msgsend_stubs(&mut ctx));
+    timed!("auto_hide_weak_defs", passes::auto_hide_weak_defs(&mut ctx));
+    timed!("hide_all_exports", passes::hide_all_exports(&mut ctx));
+    timed!("create_symbol_reexports", passes::create_symbol_reexports(&mut ctx));
+    timed!("coalesce_weak_defs", passes::coalesce_weak_defs(&mut ctx));
     passes::print_dependencies(&ctx);
     passes::print_why_load(&ctx);
     passes::print_trace(&ctx);
     crate::error::checkpoint();
     if ctx.args.dead_strip {
-        let tt = std::time::Instant::now();
+        let t = ctx.timer("dead_strip");
         dead_strip::dead_strip(&mut ctx);
         dead_strip::mark_live_references(&mut ctx);
-        if std::env::var_os("MOLD_TIMING").is_some() {
-            eprintln!("    dead_strip {:?}", tt.elapsed());
-        }
+        drop(t);
     }
-    tp!("report_undef_errors", passes::report_undef_errors(&mut ctx));
+    timed!("report_undef_errors", passes::report_undef_errors(&mut ctx));
     crate::error::checkpoint();
     if ctx.args.deduplicate {
-        let tt = std::time::Instant::now();
         crate::icf::icf_sections(&mut ctx);
-        if std::env::var_os("MOLD_TIMING").is_some() {
-            eprintln!("    icf {:?}", tt.elapsed());
-        }
     }
-    lap(&mut phases, "passes");
-    {
-        let tt = std::time::Instant::now();
-        passes::scan_relocations(&mut ctx);
-        if std::env::var_os("MOLD_TIMING").is_some() {
-            eprintln!("    scan_relocations {:?}", tt.elapsed());
-        }
-    }
+    timed!("scan_relocations", passes::scan_relocations(&mut ctx));
     passes::add_entry_stub(&mut ctx);
     passes::scan_unwind_personalities(&mut ctx);
     passes::scan_objc_stubs(&mut ctx);
@@ -205,54 +182,42 @@ pub fn link<E: Target>(cmdline: Arc<[Cow<'static, OsStr>]>) -> Result<i32, &'sta
     passes::merge_objc_categories(&mut ctx);
     // Synthetic stubs and unwind data can introduce library references
     // (notably dyld_stub_binder). Establish them before pruning dylibs.
-    tp!("dead_strip_dylibs", passes::dead_strip_dylibs(&mut ctx));
+    timed!("dead_strip_dylibs", passes::dead_strip_dylibs(&mut ctx));
 
     // Decide the output layout
-    let tt = std::time::Instant::now();
-    passes::create_output_sections(&mut ctx);
-    let t_sections = tt.elapsed();
+    timed!("create_output_sections", passes::create_output_sections(&mut ctx));
     // The output symbol table builds inside set_osec_offsets, as part
     // of the parallel __LINKEDIT task group.
-    let tt = std::time::Instant::now();
-    passes::set_osec_offsets(&mut ctx);
-    let t_offsets = tt.elapsed();
-    if std::env::var_os("MOLD_TIMING").is_some() {
-        eprintln!("    sections {t_sections:?} offsets {t_offsets:?}");
-    }
+    timed!("set_osec_offsets", passes::set_osec_offsets(&mut ctx));
     passes::fix_synthetic_symbols(&mut ctx);
     passes::resolve_entry(&mut ctx);
     crate::error::checkpoint();
     crate::mapfile::print_map(&ctx);
     crate::mapfile::write_dependency_info(&ctx);
     crate::mapfile::write_sdk_imports(&ctx);
-    lap(&mut phases, "layout");
 
     // Write the output. The file is created up front and its ranges are
     // written from background threads as copy_chunks finishes them;
     // finish() waits for the last one.
+    let t_copy = ctx.timer("copy");
     let mut buf = vec![0; ctx.output_size as usize];
     let out = output_file::OutputFile::create(&ctx.args.output, buf.as_ptr(), buf.len());
     passes::copy_chunks(&ctx, &mut buf, &out);
     crate::error::checkpoint();
-    {
-        let tt = std::time::Instant::now();
-        out.finish();
-        if std::env::var_os("MOLD_TIMING").is_some() {
-            eprintln!("    write-wait {:?}", tt.elapsed());
-        }
-    }
+    let t = ctx.timer("close_file");
+    out.finish();
+    drop(t);
+    drop(t_copy);
     let _ = std::io::Write::flush(&mut std::io::stdout());
     let _ = std::io::Write::flush(&mut std::io::stderr());
     crate::subprocess::notify_parent();
-    lap(&mut phases, "copy+write");
+    drop(t_all);
 
     // ld64's -print_statistics reports its phase times and memory to
-    // stderr; ours reports phases and the sizes that drive them.
-    if ctx.args.print_statistics {
-        eprintln!("ld total time: {:>8.1?}", t0.elapsed());
-        for (name, dur) in &phases {
-            eprintln!("  {name:<10} {dur:>8.1?}");
-        }
+    // stderr; ours reports the pass timers and the sizes that drive
+    // them.
+    if ctx.args.perf {
+        ctx.timers.print();
         eprintln!(
             "  objects: {} alive of {}; dylibs: {}; output: {} bytes",
             ctx.objs.iter().enumerate().filter(|(i, o)| o.is_alive && !ctx.is_internal(*i)).count(),

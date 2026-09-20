@@ -37,6 +37,7 @@ use crate::input_sections::{InputSection, Reloc, RelocTarget};
 use crate::macho::{S_THREAD_LOCAL_REGULAR, S_THREAD_LOCAL_ZEROFILL};
 use crate::symbol::{SymbolId, SymbolTable};
 use crate::target::Target;
+use crate::util::perf::Timers;
 
 pub struct Context<E: Target> {
     pub args: Args,
@@ -131,11 +132,14 @@ pub struct Context<E: Target> {
     pub entry_addr: u64,
     /// Total size of the output file.
     pub output_size: u64,
+    /// -print_statistics timers; inactive otherwise.
+    pub timers: Timers,
     _marker: PhantomData<E>,
 }
 
 impl<E: Target> Context<E> {
     pub fn new(args: Args) -> Self {
+        let timers = if args.perf { Timers::new() } else { Timers::disabled() };
         Self {
             args,
             objs: Vec::new(),
@@ -191,8 +195,14 @@ impl<E: Target> Context<E> {
             uuid: std::sync::Mutex::new([0; 16]),
             entry_addr: 0,
             output_size: 0,
+            timers,
             _marker: PhantomData,
         }
+    }
+
+    /// Starts a -print_statistics timer for a pass.
+    pub fn timer(&self, name: &str) -> crate::util::perf::Timer {
+        self.timers.start(name)
     }
 
     /// The header of any chunk.
