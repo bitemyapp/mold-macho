@@ -1,7 +1,7 @@
 //! Link-time optimization via libLTO.
 //!
 //! With -flto, clang emits object files that are LLVM bitcode rather
-//! than Mach-O. The linker is expected to load Apple's libLTO.dylib
+//! than Mach-O. The linker is expected to load LLVM's libLTO
 //! (clang passes its path as -lto_library), register every bitcode
 //! module, tell the library which symbols must survive, and compile
 //! them all into one Mach-O object that then joins the link like any
@@ -72,10 +72,15 @@ unsafe fn dlsym<T>(handle: *mut c_void, name: &CStr) -> T {
     unsafe { std::mem::transmute_copy::<*mut c_void, T>(&sym) }
 }
 
+/// The host's name for LLVM's LTO library, when -lto_library does not
+/// say: clang's macOS toolchains ship libLTO.dylib, Linux ones libLTO.so.
+const DEFAULT_LTO_LIBRARY: &str =
+    if cfg!(target_os = "macos") { "libLTO.dylib" } else { "libLTO.so" };
+
 /// Loads libLTO from the given path (from -lto_library, with a plain
-/// "libLTO.dylib" fallback that relies on dyld's search).
+/// library-name fallback that relies on the dynamic loader's search).
 pub fn load_plugin(path: Option<&str>) -> Plugin {
-    let path = CString::new(path.unwrap_or("libLTO.dylib")).unwrap();
+    let path = CString::new(path.unwrap_or(DEFAULT_LTO_LIBRARY)).unwrap();
     // SAFETY: dlopen/dlsym with valid NUL-terminated strings.
     unsafe {
         let handle = libc::dlopen(path.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL);
