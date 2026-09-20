@@ -13,6 +13,7 @@ name = "mold_macho"
 # them, mirroring mold's ELF port.
 [profile.release]
 debug = 1
+panic = "abort"
 
 [workspace]
 members = ["cli", "targets/*", "tests"]
