@@ -42,7 +42,7 @@ Build with `cargo build --release`. The binary is `target/release/mold`;
 
 ## Architecture
 
-The code mirrors mold's Rust port: `src/driver.rs` runs the passes in
+The code mirrors mold's layout: `src/driver.rs` runs the passes in
 order, `src/passes.rs` implements them, `src/target/` isolates the
 target-dependent relocation handling (arm64 and x86-64 are each
 instantiated in a crate under `arch/` and dispatched by the
