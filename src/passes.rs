@@ -985,7 +985,7 @@ pub fn do_lto<E: Target>(ctx: &mut Context<E>) -> bool {
                         .args
                         .exported_symbols
                         .as_ref()
-                        .is_some_and(|list| list.iter().any(|n| n == sym.name()))
+                        .is_some_and(|exported| exported.find(sym.name().as_bytes()) != -1)
                 {
                     continue;
                 }
@@ -1537,7 +1537,7 @@ pub fn auto_hide_weak_defs<E: Target>(ctx: &mut Context<E>) {
             && sym.is_weak_def()
             && sym.is_extern()
             && matches!(sym.file(), Some(FileId::Obj(_)))
-            && !exported.is_some_and(|list| list.iter().any(|n| n == sym.name()))
+            && !exported.is_some_and(|exported| exported.find(sym.name().as_bytes()) != -1)
         {
             sym.set_is_private_extern(true);
         }
@@ -3356,10 +3356,8 @@ pub fn create_symbol_reexports<E: Target>(ctx: &mut Context<E>) {
     if ctx.args.reexported_symbols.is_empty() {
         return;
     }
-    for name in &ctx.args.reexported_symbols {
-        if !name.contains(['*', '?', '['])
-            && ctx.symbols.get(name).is_none_or(|id| !ctx.symbols[id].is_defined())
-        {
+    for name in &ctx.args.reexported_names {
+        if ctx.symbols.get(name).is_none_or(|id| !ctx.symbols[id].is_defined()) {
             error!("-reexported_symbols_list: undefined symbol: {}", crate::error::demangle(name));
         }
     }
@@ -3370,11 +3368,7 @@ pub fn create_symbol_reexports<E: Target>(ctx: &mut Context<E>) {
         .enumerate()
         .filter(|(_, sym)| {
             matches!(sym.file(), Some(FileId::Dylib(_)))
-                && ctx
-                    .args
-                    .reexported_symbols
-                    .iter()
-                    .any(|pat| crate::util::glob_match(pat, sym.name()))
+                && ctx.args.reexported_symbols.find(sym.name().as_bytes()) != -1
         })
         .map(|(i, _)| i as u32)
         .collect();
@@ -4656,16 +4650,11 @@ pub fn create_output_symtab<E: Target>(
                     // -non_global_symbols_keep_list / _strip_list
                     // filter local symbols by name; stabs unaffected.
                     if let Some(keep) = &ctx_ref.args.local_keep_list
-                        && !keep.iter().any(|p| crate::util::glob_match(p, sym.name()))
+                        && keep.find(sym.name().as_bytes()) == -1
                     {
                         continue;
                     }
-                    if ctx_ref
-                        .args
-                        .local_strip_list
-                        .iter()
-                        .any(|p| crate::util::glob_match(p, sym.name()))
-                    {
+                    if ctx_ref.args.local_strip_list.find(sym.name().as_bytes()) != -1 {
                         continue;
                     }
                     let Some(isec) = sym.input_section().map(|i| i as usize) else { continue };

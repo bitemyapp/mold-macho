@@ -90,17 +90,16 @@ pub fn dead_strip<E: Target>(ctx: &mut Context<E>) {
             .syms
             .par_iter()
             .filter_map(|sym| {
-                let is_root = sym.no_dead_strip()
-                    || ((ctx.args.output_type != MH_EXECUTE
-                        || ctx.args.export_dynamic
-                        || ctx
-                            .args
-                            .exported_symbols
-                            .as_ref()
-                            .is_some_and(|names| names.iter().any(|name| name == sym.name())))
-                        && sym.is_extern()
-                        && !sym.is_private_extern()
-                        && sym.is_defined());
+                let is_root =
+                    sym.no_dead_strip()
+                        || ((ctx.args.output_type != MH_EXECUTE
+                            || ctx.args.export_dynamic
+                            || ctx.args.exported_symbols.as_ref().is_some_and(|exported| {
+                                exported.find(sym.name().as_bytes()) != -1
+                            }))
+                            && sym.is_extern()
+                            && !sym.is_private_extern()
+                            && sym.is_defined());
                 if is_root { sym.input_section().map(|i| i as usize) } else { None }
             })
             .collect()
@@ -358,8 +357,6 @@ fn print_why_live<E: Target>(ctx: &Context<E>, pred: &[usize]) {
         return;
     }
 
-    let matches = crate::util::glob_match;
-
     // A displayable symbol for each live subsection: prefer an extern
     // symbol defined at it, else any named local.
     let mut name_of: std::collections::HashMap<usize, &str> = std::collections::HashMap::new();
@@ -393,7 +390,7 @@ fn print_why_live<E: Target>(ctx: &Context<E>, pred: &[usize]) {
 
     for sym in &ctx.symbols.syms {
         if !matches!(sym.file(), Some(FileId::Obj(_)))
-            || !ctx.args.why_live.iter().any(|p| matches(p, sym.name()))
+            || ctx.args.why_live.find(sym.name().as_bytes()) == -1
         {
             continue;
         }

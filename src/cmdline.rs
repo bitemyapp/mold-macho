@@ -10,6 +10,7 @@ use std::os::unix::ffi::OsStrExt;
 
 use crate::fatal;
 use crate::macho::*;
+use crate::util::glob::{Glob, GlobBuilder};
 
 /// The Apple ld64 version whose command line this linker implements,
 /// reported by -version_details. Xcode passes flags according to this
@@ -85,13 +86,16 @@ pub struct Args {
     pub forced_undefined: Vec<String>,
     /// If set, only these symbols are exported (-exported_symbols_list
     /// or -exported_symbol).
-    pub exported_symbols: Option<Vec<String>>,
+    pub exported_symbols: Option<Glob>,
     /// -no_exported_symbols: hide every definition.
     pub no_exported_symbols: bool,
     /// Symbols to remove from the exported set.
-    pub unexported_symbols: Vec<String>,
+    pub unexported_symbols: Glob,
     /// -reexported_symbols_list: publish selected imports as exports.
-    pub reexported_symbols: Vec<String>,
+    pub reexported_symbols: Glob,
+    /// The names in -reexported_symbols_list given without wildcards,
+    /// each of which must resolve.
+    pub reexported_names: Vec<String>,
     pub current_version: u32,
     pub compatibility_version: u32,
     /// -map: write a map file describing the output layout.
@@ -213,7 +217,7 @@ pub struct Args {
     pub why_load: bool,
     /// -why_live: for each matching symbol, print the reference chain
     /// that kept it alive through -dead_strip ("*" wildcards allowed).
-    pub why_live: Vec<String>,
+    pub why_live: Glob,
     /// -alias/-alias_list: (existing, new) symbol aliases to define.
     pub aliases: Vec<(String, String)>,
     /// -sectalign: (segment, section, p2align) overrides.
@@ -237,10 +241,10 @@ pub struct Args {
     pub warn_duplicate_libraries: bool,
     /// -non_global_symbols_strip_list: local symbols to drop from the
     /// output symbol table (glob patterns).
-    pub local_strip_list: Vec<String>,
+    pub local_strip_list: Glob,
     /// -non_global_symbols_keep_list: if set, only matching local
     /// symbols stay.
-    pub local_keep_list: Option<Vec<String>>,
+    pub local_keep_list: Option<Glob>,
     pub pagezero_size: u64,
     /// True when -pagezero_size was given explicitly (it is an error
     /// anywhere but a main executable).
@@ -274,8 +278,9 @@ impl Default for Args {
             forced_undefined: Vec::new(),
             exported_symbols: None,
             no_exported_symbols: false,
-            unexported_symbols: Vec::new(),
-            reexported_symbols: Vec::new(),
+            unexported_symbols: Glob::new(),
+            reexported_symbols: Glob::new(),
+            reexported_names: Vec::new(),
             current_version: encode_version(1, 0, 0),
             compatibility_version: encode_version(1, 0, 0),
             map: None,
@@ -322,7 +327,7 @@ impl Default for Args {
             object_path_lto: None,
             print_dependencies: false,
             why_load: false,
-            why_live: Vec::new(),
+            why_live: Glob::new(),
             aliases: Vec::new(),
             sectalign: Vec::new(),
             allowable_clients: Vec::new(),
@@ -331,7 +336,7 @@ impl Default for Args {
             ignore_optimization_hints: false,
             perf: false,
             warn_duplicate_libraries: true,
-            local_strip_list: Vec::new(),
+            local_strip_list: Glob::new(),
             local_keep_list: None,
             pagezero_size: 0x1_0000_0000,
             explicit_pagezero: false,
@@ -367,6 +372,16 @@ fn parse_platform(arg: &str) -> u32 {
 /// Parses a symbol list file: one symbol per line, '#' starts a
 /// comment.
 /// Reads a symbol-list file for an option, fatal on I/O error.
+/// Adds symbol-list patterns to a matcher. ld64's lists accept `*`, `?`
+/// and `[...]` wildcards.
+fn add_patterns<'a>(glob: &mut GlobBuilder, opt: &str, pats: impl IntoIterator<Item = &'a str>) {
+    for pat in pats {
+        if !glob.add(pat.as_bytes(), 0) {
+            fatal!("{opt}: invalid pattern: {pat}");
+        }
+    }
+}
+
 fn read_symbol_list(path: &str) -> Vec<String> {
     match std::fs::read_to_string(path) {
         Ok(text) => symbol_list(&text),
@@ -439,6 +454,15 @@ pub fn parse_args(cmdline: &[Cow<'_, OsStr>]) -> Args {
     let mut args = Args::default();
     let mut i = 1;
     let mut version_shown = false;
+
+    // Symbol name patterns are collected here and compiled into
+    // matchers once the whole command line is known.
+    let mut exported_symbols: Option<GlobBuilder> = None;
+    let mut unexported_symbols = GlobBuilder::default();
+    let mut reexported_symbols = GlobBuilder::default();
+    let mut why_live = GlobBuilder::default();
+    let mut local_strip_list = GlobBuilder::default();
+    let mut local_keep_list: Option<GlobBuilder> = None;
 
     crate::error::set_color(std::io::stderr().is_terminal());
 
@@ -576,37 +600,41 @@ pub fn parse_args(cmdline: &[Cow<'_, OsStr>]) -> Args {
             "-S" => args.strip_debug = true,
             "-all_load" => args.all_load = true,
             "-u" => args.forced_undefined.push(next_arg(&mut i).to_string()),
-            "-exported_symbol" => args
-                .exported_symbols
-                .get_or_insert_with(Vec::new)
-                .push(next_arg(&mut i).to_string()),
+            "-exported_symbol" => {
+                let pat = next_arg(&mut i);
+                add_patterns(exported_symbols.get_or_insert_default(), opt, [pat]);
+            }
             "-no_exported_symbols" => args.no_exported_symbols = true,
             "-exported_symbols_list" => {
-                let path = next_arg(&mut i).to_string();
-                let list = args.exported_symbols.get_or_insert_with(Vec::new);
-                match std::fs::read_to_string(&path) {
-                    Ok(text) => list.extend(symbol_list(&text)),
-                    Err(_) => fatal!("cannot read -exported_symbols_list: {path}"),
-                }
+                let path = next_arg(&mut i);
+                let names = read_symbol_list(path);
+                add_patterns(
+                    exported_symbols.get_or_insert_default(),
+                    opt,
+                    names.iter().map(String::as_str),
+                );
             }
-            "-unexported_symbol" => args.unexported_symbols.push(next_arg(&mut i).to_string()),
+            "-unexported_symbol" => add_patterns(&mut unexported_symbols, opt, [next_arg(&mut i)]),
             "-unexported_symbols_list" => {
-                let path = next_arg(&mut i).to_string();
-                match std::fs::read_to_string(&path) {
-                    Ok(text) => args.unexported_symbols.extend(symbol_list(&text)),
-                    Err(_) => fatal!("cannot read -unexported_symbols_list: {path}"),
-                }
+                let path = next_arg(&mut i);
+                add_patterns(
+                    &mut unexported_symbols,
+                    opt,
+                    read_symbol_list(path).iter().map(String::as_str),
+                );
             }
             "-reexported_symbols_list" => {
-                let path = next_arg(&mut i).to_string();
-                let text = std::fs::read_to_string(&path)
-                    .unwrap_or_else(|_| fatal!("cannot read -reexported_symbols_list: {path}"));
-                let names = symbol_list(&text);
+                let path = next_arg(&mut i);
+                let names = read_symbol_list(path);
                 // Exact names force a reference even if no object
                 // mentions them. Patterns only match existing symbols.
-                args.forced_undefined
-                    .extend(names.iter().filter(|name| !name.contains(['*', '?', '['])).cloned());
-                args.reexported_symbols.extend(names);
+                for name in &names {
+                    if !name.contains(['*', '?', '[']) {
+                        args.forced_undefined.push(name.clone());
+                        args.reexported_names.push(name.clone());
+                    }
+                }
+                add_patterns(&mut reexported_symbols, opt, names.iter().map(String::as_str));
             }
             // The -dylib_ spellings are the older names ld64 still
             // accepts; Xcode passes -dylib_compatibility_version.
@@ -652,7 +680,7 @@ pub fn parse_args(cmdline: &[Cow<'_, OsStr>]) -> Args {
             "-order_file" => args.order_files.push(next_arg(&mut i).to_string()),
             "--print-dependencies" => args.print_dependencies = true,
             "-why_load" | "-whyload" => args.why_load = true,
-            "-why_live" => args.why_live.push(next_arg(&mut i).to_string()),
+            "-why_live" => add_patterns(&mut why_live, opt, [next_arg(&mut i)]),
             "-allowable_client" => args.allowable_clients.push(next_arg(&mut i).to_string()),
             "-client_name" => args.client_name = Some(next_arg(&mut i).to_string()),
             "-t" => args.trace = true,
@@ -662,11 +690,19 @@ pub fn parse_args(cmdline: &[Cow<'_, OsStr>]) -> Args {
             "-no_warn_duplicate_libraries" => args.warn_duplicate_libraries = false,
             "-non_global_symbols_strip_list" => {
                 let path = next_arg(&mut i);
-                args.local_strip_list.extend(read_symbol_list(path));
+                add_patterns(
+                    &mut local_strip_list,
+                    opt,
+                    read_symbol_list(path).iter().map(String::as_str),
+                );
             }
             "-non_global_symbols_keep_list" => {
                 let path = next_arg(&mut i);
-                args.local_keep_list.get_or_insert_with(Vec::new).extend(read_symbol_list(path));
+                add_patterns(
+                    local_keep_list.get_or_insert_default(),
+                    opt,
+                    read_symbol_list(path).iter().map(String::as_str),
+                );
             }
             "-sectalign" => {
                 let seg = next_arg(&mut i).to_string();
@@ -800,6 +836,12 @@ pub fn parse_args(cmdline: &[Cow<'_, OsStr>]) -> Args {
     if args.relocatable && args.sdk_imports.is_some() {
         fatal!("-sdk_imports cannot be used with -r");
     }
+    args.exported_symbols = exported_symbols.map(GlobBuilder::build);
+    args.unexported_symbols = unexported_symbols.build();
+    args.reexported_symbols = reexported_symbols.build();
+    args.why_live = why_live.build();
+    args.local_strip_list = local_strip_list.build();
+    args.local_keep_list = local_keep_list.map(GlobBuilder::build);
     if args.no_exported_symbols
         && (args.exported_symbols.is_some() || !args.unexported_symbols.is_empty())
     {

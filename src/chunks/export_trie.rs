@@ -154,11 +154,11 @@ pub fn encode_export_trie<E: Target>(ctx: &Context<E>, sorted_globals: &[SymbolI
             // Explicit reexports survive restrictions on local exports.
             if !same_name {
                 if let Some(exported) = &ctx.args.exported_symbols
-                    && !exported.iter().any(|pat| pat == sym.name())
+                    && exported.find(sym.name().as_bytes()) == -1
                 {
                     return None;
                 }
-                if ctx.args.unexported_symbols.iter().any(|pat| pat == sym.name()) {
+                if ctx.args.unexported_symbols.find(sym.name().as_bytes()) != -1 {
                     return None;
                 }
             }
