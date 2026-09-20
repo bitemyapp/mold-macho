@@ -26,10 +26,10 @@
 //! second __TEXT placement (which re-encodes __unwind_info) cost 5% of
 //! the link. The extra entries are dead code in the thunk islands.
 
+use crate::chunks::{self, OutputSectionId};
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::input_sections::InputSectionId;
-use crate::output_chunks::{self, OutputSectionId};
 use crate::symbol::SymbolId;
 use crate::target::{RelocClass, Target};
 use crate::util::align_to;
@@ -40,7 +40,7 @@ use crate::util::align_to;
 pub fn create_range_extension_thunks<E: Target>(
     ctx: &mut Context<E>,
     isecs: &[InputSectionId],
-) -> Vec<output_chunks::Thunk> {
+) -> Vec<chunks::Thunk> {
     const BATCH: u64 = 10 * 1024 * 1024;
     const MAX_THUNK: u64 = 1024 * 1024;
     let budget = E::BRANCH_RANGE / 2 - MAX_THUNK - BATCH;
@@ -59,7 +59,7 @@ pub fn create_range_extension_thunks<E: Target>(
     let total_estimate: u64 = isecs.iter().map(|&id| ctx.isecs[id].size as u64 + 16).sum::<u64>();
     let total_estimate = total_estimate + (total_estimate / BATCH + 1) * MAX_THUNK;
 
-    let mut thunks: Vec<output_chunks::Thunk> = Vec::new();
+    let mut thunks: Vec<chunks::Thunk> = Vec::new();
     // Thunks before this index have fallen out of reach of the current
     // batch; their symbols are unmarked so they can take a new entry
     // (mold-rust's cursor A).
@@ -138,7 +138,7 @@ pub fn create_range_extension_thunks<E: Target>(
 /// longer reach, advancing the reachable-thunk cursor past them.
 fn release_out_of_reach<E: Target>(
     ctx: &Context<E>,
-    thunks: &[output_chunks::Thunk],
+    thunks: &[chunks::Thunk],
     reachable_from: &mut usize,
     from: u64,
     reach: u64,
@@ -162,7 +162,7 @@ fn scan_batch<E: Target>(
     batch: &[InputSectionId],
     thunk_off: u64,
     forward_reachable: bool,
-    thunks: &mut Vec<output_chunks::Thunk>,
+    thunks: &mut Vec<chunks::Thunk>,
 ) -> u64 {
     use rayon::prelude::*;
     let ctx_ref: &Context<E> = ctx;
@@ -215,7 +215,7 @@ fn scan_batch<E: Target>(
     // each symbol.
     syms.par_sort_unstable();
     let n = syms.len() as u64;
-    thunks.push(output_chunks::Thunk { offset: thunk_off, syms });
+    thunks.push(chunks::Thunk { offset: thunk_off, syms });
     n
 }
 

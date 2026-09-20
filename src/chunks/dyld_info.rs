@@ -2,10 +2,10 @@
 //! bind and lazy bind. mold-rust's dynamic.rs holds the ELF dynamic
 //! relocation tables they stand in for.
 
+use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
-use crate::output_chunks::ChunkHeader;
 use crate::passes::{objc_ref_addr, DataField};
 use crate::target::{RelocClass, Target};
 use crate::util::write_uleb;

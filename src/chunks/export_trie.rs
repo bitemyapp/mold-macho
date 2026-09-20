@@ -1,9 +1,9 @@
 //! The export trie in __LINKEDIT: dyld's index of exported symbols.
 
+use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
-use crate::output_chunks::ChunkHeader;
 use crate::symbol::SymbolId;
 use crate::target::Target;
 

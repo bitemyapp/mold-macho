@@ -2,6 +2,11 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::chunks::misc::{code_signature_size, SectCreateSection};
+use crate::chunks::symtab::SymtabSection;
+use crate::chunks::{
+    self, mach_header_size, ChunkId, OutputSection, OutputSectionId, OutputSegment, Tail,
+};
 use crate::cmdline::InputArg;
 use crate::context::Context;
 use crate::error;
@@ -12,11 +17,6 @@ use crate::input_files::FileId;
 use crate::input_sections::{InputSection, RelocTarget};
 use crate::macho::*;
 use crate::mapped_file::MappedFile;
-use crate::output_chunks::misc::{code_signature_size, SectCreateSection};
-use crate::output_chunks::symtab::SymtabSection;
-use crate::output_chunks::{
-    self, mach_header_size, ChunkId, OutputSection, OutputSectionId, OutputSegment, Tail,
-};
 use crate::tapi;
 use crate::target::RelocClass;
 use crate::target::Target;
@@ -5055,7 +5055,7 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
             // sold sizes its __LINKEDIT members with the same
             // parallel-for.
             enum Streams {
-                Chained(output_chunks::chained_fixups::ChainedFixups),
+                Chained(chunks::chained_fixups::ChainedFixups),
                 Classic(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u32>),
             }
             let use_chained = ctx.use_chained_fixups();
@@ -5098,10 +5098,7 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                         || {
                             t!(
                                 "trie_encode",
-                                output_chunks::export_trie::encode_export_trie(
-                                    shared,
-                                    sorted_globals
-                                )
+                                chunks::export_trie::encode_export_trie(shared, sorted_globals)
                             )
                         },
                     )
@@ -5112,26 +5109,21 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                             if use_chained {
                                 Streams::Chained(t!(
                                     "chained_fixups",
-                                    output_chunks::chained_fixups::build_chained_fixups(shared)
+                                    chunks::chained_fixups::build_chained_fixups(shared)
                                 ))
                             } else {
                                 let (rebase, bind) = rayon::join(
                                     || {
                                         t!(
                                             "rebase_info",
-                                            output_chunks::dyld_info::build_rebase_info(shared)
+                                            chunks::dyld_info::build_rebase_info(shared)
                                         )
                                     },
-                                    || {
-                                        t!(
-                                            "bind_info",
-                                            output_chunks::dyld_info::build_bind_info(shared)
-                                        )
-                                    },
+                                    || t!("bind_info", chunks::dyld_info::build_bind_info(shared)),
                                 );
                                 let (lazy, lazy_offsets) =
-                                    output_chunks::dyld_info::build_lazy_bind_info(shared);
-                                let weak = output_chunks::dyld_info::build_weak_bind_info(shared);
+                                    chunks::dyld_info::build_lazy_bind_info(shared);
+                                let weak = chunks::dyld_info::build_weak_bind_info(shared);
                                 Streams::Classic(rebase, bind, weak, lazy, lazy_offsets)
                             }
                         },
@@ -5140,15 +5132,10 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                                 || {
                                     t!(
                                         "function_starts",
-                                        output_chunks::misc::build_function_starts(shared)
+                                        chunks::misc::build_function_starts(shared)
                                     )
                                 },
-                                || {
-                                    t!(
-                                        "data_in_code",
-                                        output_chunks::misc::build_data_in_code(shared)
-                                    )
-                                },
+                                || t!("data_in_code", chunks::misc::build_data_in_code(shared)),
                             )
                         },
                     )
@@ -5226,7 +5213,7 @@ pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
                 // come back as a patch list for the copy phase.
                 ChunkId::UnwindInfo => {
                     let (data, personalities) =
-                        t!("unwind_encode", output_chunks::unwind_info::encode_unwind_info(ctx));
+                        t!("unwind_encode", chunks::unwind_info::encode_unwind_info(ctx));
                     let len = data.len() as u64;
                     ctx.unwind_info.contents = data;
                     ctx.unwind_info.personalities = personalities;
@@ -5530,13 +5517,10 @@ pub fn copy_chunks<E: Target>(
         consumed = off + size;
     }
 
-    t!(
-        "par-copy",
-        slices.into_par_iter().for_each(|(id, slice)| output_chunks::copy_buf(ctx, id, slice))
-    );
+    t!("par-copy", slices.into_par_iter().for_each(|(id, slice)| chunks::copy_buf(ctx, id, slice)));
 
     if ctx.use_chained_fixups() {
-        t!("write-chains", output_chunks::chained_fixups::write_fixup_chains(ctx, buf));
+        t!("write-chains", chunks::chained_fixups::write_fixup_chains(ctx, buf));
     }
     t!("loh", E::apply_optimization_hints(ctx, buf));
 
@@ -5550,9 +5534,9 @@ pub fn copy_chunks<E: Target>(
 
     // Nothing below writes between the header and the symbol table.
     out.queue(hdr_end, symtab_start - hdr_end);
-    t!("copy_symtab", output_chunks::symtab::copy_symtab(ctx, buf));
+    t!("copy_symtab", chunks::symtab::copy_symtab(ctx, buf));
     out.queue(symtab_start, sig_start - symtab_start);
-    output_chunks::copy_mach_header(ctx, buf);
+    chunks::copy_mach_header(ctx, buf);
 
     // The code signature is SHA256 hashes of every 4KiB page before it,
     // and the UUID that identifies this build is derived from that same
@@ -5568,7 +5552,7 @@ pub fn copy_chunks<E: Target>(
     // basename); unsigned output hashes its pages the same way.
     let mut hashes: Vec<[u8; 32]> = Vec::new();
     if ctx.args.uuid || ctx.args.adhoc_codesign {
-        t!("page-hashes", hashes = output_chunks::misc::page_hashes(&buf[..sig_start]));
+        t!("page-hashes", hashes = chunks::misc::page_hashes(&buf[..sig_start]));
     }
     if ctx.args.uuid {
         t!("uuid", {
@@ -5579,14 +5563,14 @@ pub fn copy_chunks<E: Target>(
             uuid[6] = (uuid[6] & 0x0f) | 0x40; // version 4
             uuid[8] = (uuid[8] & 0x3f) | 0x80; // RFC 4122 variant
             *ctx.uuid.lock().unwrap() = uuid;
-            output_chunks::copy_mach_header(ctx, buf);
-            output_chunks::misc::rehash_pages(&buf[..sig_start], &mut hashes, 0..hdr_end);
+            chunks::copy_mach_header(ctx, buf);
+            chunks::misc::rehash_pages(&buf[..sig_start], &mut hashes, 0..hdr_end);
         });
     }
     out.queue(0, hdr_end);
 
     if ctx.args.adhoc_codesign {
-        t!("codesign", output_chunks::misc::write_code_signature(ctx, buf, &hashes));
+        t!("codesign", chunks::misc::write_code_signature(ctx, buf, &hashes));
     }
     out.queue(sig_start, buf.len() - sig_start);
 }

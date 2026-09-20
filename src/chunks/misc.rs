@@ -2,10 +2,10 @@
 //! and the LC_FUNCTION_STARTS, LC_DATA_IN_CODE and LC_CODE_SIGNATURE
 //! tables in __LINKEDIT.
 
+use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
-use crate::output_chunks::ChunkHeader;
 use crate::target::Target;
 use crate::util::{align_to, write_uleb};
 

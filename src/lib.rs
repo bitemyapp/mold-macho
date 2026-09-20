@@ -1,6 +1,7 @@
 //! A high-performance Mach-O linker.
 
 pub mod archive_file;
+pub mod chunks;
 pub mod cmdline;
 pub mod context;
 pub mod dead_strip;
@@ -15,7 +16,6 @@ pub mod lto;
 pub mod macho;
 pub mod mapfile;
 pub mod mapped_file;
-pub mod output_chunks;
 pub mod output_file;
 pub mod passes;
 pub mod relocatable;

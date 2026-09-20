@@ -1,8 +1,8 @@
 //! __TEXT,__eh_frame: the re-synthesized DWARF unwind records that
 //! compact unwind can't express.
 
+use crate::chunks::ChunkHeader;
 use crate::context::Context;
-use crate::output_chunks::ChunkHeader;
 use crate::target::Target;
 
 #[derive(Debug)]

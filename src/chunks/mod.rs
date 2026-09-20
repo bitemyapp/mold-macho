@@ -6,7 +6,7 @@
 //! ChunkHeader and the data it is written from, reached through the
 //! typed fields of Context; a ChunkId names one, and `ctx.chunks` lists
 //! the chunks of the output in file order. Segments group chunks for
-//! the LC_SEGMENT_64 load commands. mold-rust's output_chunks has the
+//! the LC_SEGMENT_64 load commands. mold's chunks module has the
 //! same shape.
 
 pub mod chained_fixups;

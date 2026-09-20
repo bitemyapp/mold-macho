@@ -2,9 +2,9 @@
 //! __la_symbol_ptr, __got and __thread_ptrs. mold-rust's got.rs holds
 //! their ELF counterparts (.plt, .plt.got, .got.plt, .got).
 
+use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::macho::*;
-use crate::output_chunks::ChunkHeader;
 use crate::symbol::SymbolId;
 use crate::target::Target;
 

@@ -2,11 +2,11 @@
 //! replacement for the rebase and bind opcode streams, with the fixup
 //! chains it describes threaded through the data sections.
 
+use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::fatal;
 use crate::input_files::FileId;
 use crate::macho::*;
-use crate::output_chunks::ChunkHeader;
 use crate::passes::file_display;
 use crate::symbol::SymbolId;
 use crate::target::RelocClass;

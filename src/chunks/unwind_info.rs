@@ -1,9 +1,9 @@
 //! __TEXT,__unwind_info: the compact unwind table, generated from the
 //! objects' __compact_unwind records.
 
+use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::macho::*;
-use crate::output_chunks::ChunkHeader;
 use crate::symbol::SymbolId;
 use crate::target::Target;
 

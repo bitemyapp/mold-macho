@@ -1,9 +1,9 @@
 //! The symbol table, string table and indirect symbol table in
 //! __LINKEDIT.
 
+use crate::chunks::ChunkHeader;
 use crate::context::Context;
 use crate::macho::*;
-use crate::output_chunks::ChunkHeader;
 use crate::symbol::SymbolId;
 use crate::target::Target;
 

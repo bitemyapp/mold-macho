@@ -16,13 +16,13 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::chunks::{ChunkId, OutputSectionId};
 use crate::context::Context;
 use crate::error;
 use crate::fatal;
 use crate::input_files::FileId;
 use crate::input_sections::RelocTarget;
 use crate::macho::*;
-use crate::output_chunks::{ChunkId, OutputSectionId};
 use crate::output_file;
 use crate::target::Target;
 use crate::util::align_to;

@@ -2,9 +2,9 @@
 //! _objc_msgSend$<selector> stubs, the method lists rewritten in
 //! relative form, and the merged __objc_imageinfo record.
 
+use crate::chunks::{ChunkHeader, OutputSectionId};
 use crate::context::Context;
 use crate::macho::*;
-use crate::output_chunks::{ChunkHeader, OutputSectionId};
 use crate::passes::{ObjcMethList, ObjcRef};
 use crate::symbol::SymbolId;
 use crate::target::Target;

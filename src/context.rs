@@ -3,30 +3,30 @@
 
 use std::marker::PhantomData;
 
+use crate::chunks::chained_fixups::ChainedFixupsSection;
+use crate::chunks::dyld_info::{
+    BindInfoSection, LazyBindInfoSection, RebaseInfoSection, WeakBindInfoSection,
+};
+use crate::chunks::eh_frame::EhFrameSection;
+use crate::chunks::export_trie::ExportTrieSection;
+use crate::chunks::got::{
+    GotSection, LazyPtrsSection, StubHelperSection, StubsSection, ThreadPtrsSection,
+};
+use crate::chunks::misc::{
+    CodeSignatureSection, DataInCodeSection, FunctionStartsSection, InitOffsetsSection,
+    SectCreateSection,
+};
+use crate::chunks::objc::{ObjcImageInfoSection, ObjcMethlistSection, ObjcStubsSection};
+use crate::chunks::symtab::{IndirectSymtabSection, StrtabSection, SymtabSection};
+use crate::chunks::unwind_info::UnwindInfoSection;
+use crate::chunks::{
+    ChunkHeader, ChunkId, OutputMachHeader, OutputSection, OutputSectionId, OutputSegment,
+};
 use crate::cmdline::Args;
 use crate::error;
 use crate::input_files::{DylibFile, FileId, ObjectFile};
 use crate::input_sections::{InputSection, Reloc, RelocTarget};
 use crate::macho::{S_THREAD_LOCAL_REGULAR, S_THREAD_LOCAL_ZEROFILL};
-use crate::output_chunks::chained_fixups::ChainedFixupsSection;
-use crate::output_chunks::dyld_info::{
-    BindInfoSection, LazyBindInfoSection, RebaseInfoSection, WeakBindInfoSection,
-};
-use crate::output_chunks::eh_frame::EhFrameSection;
-use crate::output_chunks::export_trie::ExportTrieSection;
-use crate::output_chunks::got::{
-    GotSection, LazyPtrsSection, StubHelperSection, StubsSection, ThreadPtrsSection,
-};
-use crate::output_chunks::misc::{
-    CodeSignatureSection, DataInCodeSection, FunctionStartsSection, InitOffsetsSection,
-    SectCreateSection,
-};
-use crate::output_chunks::objc::{ObjcImageInfoSection, ObjcMethlistSection, ObjcStubsSection};
-use crate::output_chunks::symtab::{IndirectSymtabSection, StrtabSection, SymtabSection};
-use crate::output_chunks::unwind_info::UnwindInfoSection;
-use crate::output_chunks::{
-    ChunkHeader, ChunkId, OutputMachHeader, OutputSection, OutputSectionId, OutputSegment,
-};
 use crate::symbol::{SymbolId, SymbolTable};
 use crate::target::Target;
 

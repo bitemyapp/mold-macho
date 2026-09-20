@@ -2,9 +2,9 @@
 //! subsections assigned to it, the range-extension thunks placed among
 //! them, and the linker-synthesized tail after them.
 
+use crate::chunks::{ChunkHeader, ChunkId, OutputSectionId};
 use crate::context::Context;
 use crate::input_sections::InputSectionId;
-use crate::output_chunks::{ChunkHeader, ChunkId, OutputSectionId};
 use crate::passes::{objc_ref_addr, DataField};
 use crate::symbol::SymbolId;
 use crate::target::Target;

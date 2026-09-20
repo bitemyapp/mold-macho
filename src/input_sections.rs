@@ -1,6 +1,6 @@
 //! Input sections.
 
-use crate::output_chunks::ChunkId;
+use crate::chunks::ChunkId;
 
 /// A subsection index, u32 as in mold-rust.
 pub type InputSectionId = u32;
