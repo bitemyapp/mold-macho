@@ -10,3 +10,4 @@ publish = false
 path = "lib.rs"
 
 [dependencies]
+libc.workspace = true

@@ -60,9 +60,12 @@ behavior involved in that change.
 
 Tests are shell scripts under `tests/`, one feature per script,
 driving the real toolchain through `cc --ld-path=...`; a harness runs
-each for arm64 and (under Rosetta) x86-64:
+each for arm64 and (under Rosetta) x86-64, writing logs and outputs
+under `target/<profile>/mold-test/out/test`:
 
     cargo test
+    cargo test -- dead-strip --native --timeout 120
+    cargo test -- --list
 
 ## License
 
