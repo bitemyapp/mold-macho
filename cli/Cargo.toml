@@ -1,9 +1,9 @@
 [package]
 name = "mold-macho-cli"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "The mold Mach-O linker executable"
-license = "MIT"
+license.workspace = true
 
 [[bin]]
 name = "mold"
@@ -16,7 +16,7 @@ harness = false
 
 [dependencies]
 mimalloc = { git = "https://github.com/rui314/mimalloc_rust", rev = "cc58b72775b8b5bc89ee37752af61fcb4f7c2909" }
-mold-macho = { path = ".." }
+mold-macho.workspace = true
 mold-macho-target-arm64 = { path = "../targets/arm64", optional = true }
 mold-macho-target-x86_64 = { path = "../targets/x86_64", optional = true }
 

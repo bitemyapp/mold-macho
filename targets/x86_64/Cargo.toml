@@ -1,9 +1,9 @@
 [package]
 name = "mold-macho-target-x86_64"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "The mold Mach-O linker instantiated for x86_64"
-license = "MIT"
+license.workspace = true
 
 [dependencies]
-mold-macho = { path = "../.." }
+mold-macho.workspace = true
