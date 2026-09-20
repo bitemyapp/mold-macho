@@ -1370,6 +1370,7 @@ pub struct Cie {
     pub is_alive: bool,
 }
 
+#[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<Cie>() == 48);
 
 /// A DWARF Frame Description Entry from an object's __eh_frame.
@@ -1393,6 +1394,7 @@ pub struct Fde {
 
 // Every index a u32 and the record bytes borrowed, as in mold-rust
 // (whose FdeRecord derives even more and is 16 bytes).
+#[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<Fde>() == 56);
 
 pub fn read_uleb_at(data: &[u8], pos: &mut usize) -> u64 {
