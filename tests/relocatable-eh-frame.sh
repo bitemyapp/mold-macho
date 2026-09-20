@@ -74,8 +74,9 @@ otool -rv $t/merged.o | sed -n '/__eh_frame/,/^Relocation information (__/p' > $
 grep -q 'UNSIGND False     _through_asm' $t/eh_relocs
 
 # The exception unwinds through the assembly frame after a final link
-# by either linker.
+# by either linker. Apple's is asked to sign because the CI runner
+# hangs running unsigned x86_64 binaries (see relocatable.sh).
 $CXX --ld-path=$mold -o $t/exe $t/merged.o
 $t/exe | grep 'caught 42'
-$CXX -o $t/exe2 $t/merged.o
+$CXX -Wl,-adhoc_codesign -o $t/exe2 $t/merged.o
 $t/exe2 | grep 'caught 42'

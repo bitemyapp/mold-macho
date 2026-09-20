@@ -34,5 +34,7 @@ grep -q 'UNSIGND False     __ZN1S1gEv' $t/relocs
 
 $CXX --ld-path=$mold -o $t/exe $t/r.o
 $t/exe | grep '^42$'
-$CXX -o $t/exe2 $t/r.o
+# Apple's ld is asked to sign because the CI runner hangs running
+# unsigned x86_64 binaries (see relocatable.sh).
+$CXX -Wl,-adhoc_codesign -o $t/exe2 $t/r.o
 $t/exe2 | grep '^42$'

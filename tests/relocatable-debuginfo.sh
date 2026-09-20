@@ -33,11 +33,16 @@ grep -q 'OSO.*/a.o' $t/stabs2
 grep -q 'OSO.*/b.o' $t/stabs2
 not grep -q 'OSO.*merged.o' $t/stabs2
 
-# Apple's linker accepts the merged object too.
-$CC -g -o $t/exe2 $t/merged.o
+# Apple's linker accepts the merged object too. It is asked to sign
+# because the CI runner hangs running unsigned x86_64 binaries (see
+# relocatable.sh).
+$CC -g -Wl,-adhoc_codesign -o $t/exe2 $t/merged.o
 $t/exe2 | grep '^42$'
 
 # lldb sets a source-level breakpoint in code that came through -r.
-lldb -b -o 'b compute' -o run -o 'p x' $t/exe > $t/lldb.log 2>&1 || true
-grep -q 'stop reason = breakpoint' $t/lldb.log
-grep -q '(int) 6' $t/lldb.log
+# Only a native binary is debugged: see native_arch in common.inc.
+if native_arch; then
+  lldb -b -o 'b compute' -o run -o 'p x' $t/exe > $t/lldb.log 2>&1 || true
+  grep -q 'stop reason = breakpoint' $t/lldb.log
+  grep -q '(int) 6' $t/lldb.log
+fi

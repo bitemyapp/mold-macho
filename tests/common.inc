@@ -24,6 +24,13 @@ not() {
   return 0
 }
 
+# lldb launching a process under Rosetta hangs on the hosted CI runner
+# (debugserver never reports the launch), so scripts run lldb only on
+# binaries of the host's own architecture.
+native_arch() {
+  [ "$ARCH" = "$(uname -m)" ]
+}
+
 test_cflags() {
   echo 'int main() {}' | $CC "$@" -o /dev/null -xc - >& /dev/null
 }
