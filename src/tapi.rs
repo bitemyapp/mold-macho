@@ -63,7 +63,7 @@ impl Json {
         }
     }
     /// The strings of an array-valued key.
-    fn strs(&self, key: &str) -> impl Iterator<Item = &'static str> + '_ {
+    fn strs(&self, key: &str) -> impl Iterator<Item = &'static str> {
         self.get(key).map(Json::arr).unwrap_or(&[]).iter().filter_map(Json::str)
     }
 }

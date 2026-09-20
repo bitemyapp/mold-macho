@@ -101,7 +101,7 @@ pub fn write_uleb(buf: &mut Vec<u8>, mut val: u64) {
 /// CommonCrypto implementation, so we use it rather than pulling in a
 /// Rust crypto crate.
 pub fn sha256(data: &[u8], out: &mut [u8; 32]) {
-    extern "C" {
+    unsafe extern "C" {
         fn CC_SHA256(data: *const u8, len: u32, md: *mut u8) -> *mut u8;
     }
     // SAFETY: CC_SHA256 reads `len` bytes and writes exactly 32 bytes.

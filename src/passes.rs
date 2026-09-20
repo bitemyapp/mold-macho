@@ -3291,7 +3291,7 @@ pub fn merge_objc_categories<E: Target>(ctx: &mut Context<E>) {
             .refs
             .iter()
             .zip(&merged)
-            .filter(|(_, &m)| !m)
+            .filter(|&(_, &m)| !m)
             .map(|(&r, _)| DataField::Ptr(r))
             .collect();
         if survivors.is_empty() {
