@@ -1,11 +1,11 @@
 //! The ARM64 (AArch64) target.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::error;
 use crate::fatal;
 use crate::input_sections::{Reloc, RelocTarget};
 use crate::macho::*;
+use crate::target::Target;
 use crate::util::{bits, sign_extend};
 
 #[derive(Clone, Copy, Default)]
@@ -69,7 +69,7 @@ fn write_add_ldst(loc: &mut [u8], val: u64) {
     write32(loc, (insn & !IMM12) | imm);
 }
 
-impl Arch for Arm64 {
+impl Target for Arm64 {
     const NAME: &'static str = "arm64";
     const CPUTYPE: u32 = CPU_TYPE_ARM64;
     const CPUSUBTYPE: u32 = CPU_SUBTYPE_ARM64_ALL;
@@ -268,8 +268,8 @@ impl Arch for Arm64 {
         });
     }
 
-    fn classify_reloc(r_type: u8) -> crate::arch::RelocClass {
-        use crate::arch::RelocClass;
+    fn classify_reloc(r_type: u8) -> crate::target::RelocClass {
+        use crate::target::RelocClass;
         match r_type {
             ARM64_RELOC_BRANCH26 => RelocClass::Branch,
             ARM64_RELOC_GOT_LOAD_PAGE21 | ARM64_RELOC_GOT_LOAD_PAGEOFF12 => RelocClass::GotLoad,

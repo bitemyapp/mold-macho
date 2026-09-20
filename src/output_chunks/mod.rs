@@ -22,10 +22,10 @@ pub mod unwind_info;
 
 use std::num::NonZeroU32;
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
+use crate::target::Target;
 
 pub use output_section::{OutputSection, Tail, Thunk};
 
@@ -239,7 +239,7 @@ pub fn segment_prot(name: &str) -> u32 {
 /// header, the symbol and string tables and the code signature are
 /// written serially after the parallel copy (see copy_chunks), so they
 /// have nothing to do here.
-pub fn copy_buf<E: Arch>(ctx: &Context<E>, id: ChunkId, buf: &mut [u8]) {
+pub fn copy_buf<E: Target>(ctx: &Context<E>, id: ChunkId, buf: &mut [u8]) {
     match id {
         ChunkId::MachHeader | ChunkId::Symtab | ChunkId::Strtab | ChunkId::CodeSignature => {}
         ChunkId::Output(id) => output_section::copy_buf(ctx, id, buf),
@@ -280,7 +280,7 @@ fn append_string(buf: &mut Vec<u8>, s: &str) {
     }
 }
 
-fn create_segment_cmd<E: Arch>(ctx: &Context<E>, seg: &OutputSegment) -> Vec<u8> {
+fn create_segment_cmd<E: Target>(ctx: &Context<E>, seg: &OutputSegment) -> Vec<u8> {
     let mut cmd = seg.cmd;
     cmd.cmd = LC_SEGMENT_64;
     cmd.segname = str_to_name(seg.name);
@@ -319,7 +319,7 @@ fn create_segment_cmd<E: Arch>(ctx: &Context<E>, seg: &OutputSegment) -> Vec<u8>
     buf
 }
 
-fn create_dyld_info_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+fn create_dyld_info_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let mut cmd = DyldInfoCommand {
         cmd: LC_DYLD_INFO_ONLY,
         cmdsize: size_of::<DyldInfoCommand>() as u32,
@@ -353,7 +353,7 @@ fn create_dyld_info_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
     to_vec(&cmd)
 }
 
-fn create_symtab_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+fn create_symtab_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let cmd = SymtabCommand {
         cmd: LC_SYMTAB,
         cmdsize: size_of::<SymtabCommand>() as u32,
@@ -365,7 +365,7 @@ fn create_symtab_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
     to_vec(&cmd)
 }
 
-fn create_dysymtab_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+fn create_dysymtab_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let data = &ctx.symtab;
     let mut cmd = DysymtabCommand {
         cmd: LC_DYSYMTAB,
@@ -385,11 +385,11 @@ fn create_dysymtab_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
     to_vec(&cmd)
 }
 
-fn create_function_starts_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+fn create_function_starts_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     create_linkedit_data_cmd(LC_FUNCTION_STARTS, &ctx.function_starts.hdr)
 }
 
-fn create_uuid_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+fn create_uuid_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let cmd = UuidCommand {
         cmd: LC_UUID,
         cmdsize: size_of::<UuidCommand>() as u32,
@@ -398,7 +398,7 @@ fn create_uuid_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
     to_vec(&cmd)
 }
 
-fn create_build_version_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+fn create_build_version_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let cmd = BuildVersionCommand {
         cmd: LC_BUILD_VERSION,
         cmdsize: (size_of::<BuildVersionCommand>() + 8) as u32,
@@ -418,7 +418,7 @@ fn create_build_version_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
     buf
 }
 
-fn create_source_version_cmd<E: Arch>(_ctx: &Context<E>) -> Vec<u8> {
+fn create_source_version_cmd<E: Target>(_ctx: &Context<E>) -> Vec<u8> {
     let cmd = SourceVersionCommand {
         cmd: LC_SOURCE_VERSION,
         cmdsize: size_of::<SourceVersionCommand>() as u32,
@@ -462,7 +462,7 @@ fn create_dylinker_cmd() -> Vec<u8> {
     buf
 }
 
-fn create_id_dylib_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+fn create_id_dylib_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let name = ctx
         .args
         .install_name
@@ -497,7 +497,7 @@ fn create_string_cmd(kind: u32, path: &str) -> Vec<u8> {
     buf
 }
 
-fn create_main_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+fn create_main_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     // The entry point is a file offset into __TEXT, whose file offset
     // is zero.
     let text = ctx.segments.iter().find(|s| s.name == "__TEXT").unwrap();
@@ -510,7 +510,7 @@ fn create_main_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
     to_vec(&cmd)
 }
 
-fn create_code_signature_cmd<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+fn create_code_signature_cmd<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     create_linkedit_data_cmd(LC_CODE_SIGNATURE, &ctx.code_signature.hdr)
 }
 
@@ -524,7 +524,7 @@ fn create_linkedit_data_cmd(cmd: u32, hdr: &ChunkHeader) -> Vec<u8> {
     to_vec(&cmd)
 }
 
-pub fn create_load_commands<E: Arch>(ctx: &Context<E>) -> Vec<Vec<u8>> {
+pub fn create_load_commands<E: Target>(ctx: &Context<E>) -> Vec<Vec<u8>> {
     // In ld64's order: the segments; a dylib's identity; the dyld
     // tables; the symbol tables; the dynamic linker; identification
     // (UUID, build and source versions); the entry point; the
@@ -599,12 +599,12 @@ pub fn create_load_commands<E: Arch>(ctx: &Context<E>) -> Vec<Vec<u8>> {
 
 /// Returns the size of the mach header chunk: the header, the load
 /// commands and the header padding.
-pub fn mach_header_size<E: Arch>(ctx: &Context<E>) -> u64 {
+pub fn mach_header_size<E: Target>(ctx: &Context<E>) -> u64 {
     let cmds: usize = create_load_commands(ctx).iter().map(Vec::len).sum();
     size_of::<MachHeader>() as u64 + cmds as u64 + ctx.args.headerpad
 }
 
-pub fn copy_mach_header<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+pub fn copy_mach_header<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let cmds = create_load_commands(ctx);
 
     let hdr = MachHeader {

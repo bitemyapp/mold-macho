@@ -1,11 +1,11 @@
 //! The export trie in __LINKEDIT: dyld's index of exported symbols.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
 use crate::symbol::SymbolId;
+use crate::target::Target;
 
 #[derive(Debug)]
 pub struct ExportTrieSection {
@@ -21,7 +21,7 @@ impl ExportTrieSection {
     }
 }
 
-pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let data = &ctx.export_trie.contents;
     buf[..data.len()].copy_from_slice(data);
 }
@@ -131,7 +131,7 @@ fn uleb_len(mut val: u64) -> usize {
 /// and edges labeled with NUL-terminated string fragments pointing at
 /// child nodes by ULEB128 offset within the trie. Since offsets are
 /// variable-length, sizing iterates to a fixed point.
-pub fn encode_export_trie<E: Arch>(ctx: &Context<E>, sorted_globals: &[SymbolId]) -> Vec<u8> {
+pub fn encode_export_trie<E: Target>(ctx: &Context<E>, sorted_globals: &[SymbolId]) -> Vec<u8> {
     use rayon::prelude::*;
     let base = ctx.args.pagezero_size;
 

@@ -1,11 +1,11 @@
 //! The linker driver: runs the passes in order.
 
-use crate::arch::Arch;
 use crate::cmdline;
 use crate::context::Context;
 use crate::dead_strip;
 use crate::output_file;
 use crate::passes;
+use crate::target::Target;
 
 /// Runs the linker with the given command line. Returns the exit status.
 ///
@@ -49,7 +49,7 @@ fn sniff_target(argv: &[String]) -> Option<String> {
         let magic = u32::from_le_bytes(data[..4].try_into().unwrap());
         if magic == MH_MAGIC_64 {
             let cputype = u32::from_le_bytes(data[4..8].try_into().unwrap());
-            if let Some(name) = crate::arch::cputype_name(cputype) {
+            if let Some(name) = crate::target::cputype_name(cputype) {
                 return Some(name.to_string());
             }
         }
@@ -67,7 +67,7 @@ fn host_target() -> &'static str {
 
 /// Links for the target `E`, or reports the target the inputs are
 /// actually for.
-pub fn link<E: Arch>(cmdline: &[String]) -> Result<i32, String> {
+pub fn link<E: Target>(cmdline: &[String]) -> Result<i32, String> {
     let cmdline = cmdline::expand_response_files(cmdline);
     let args = cmdline::parse_args(&cmdline);
 

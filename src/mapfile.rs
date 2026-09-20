@@ -3,10 +3,10 @@
 
 use std::io::Write;
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::fatal;
 use crate::input_files::FileId;
+use crate::target::Target;
 
 fn json_string(s: &str) -> String {
     use std::fmt::Write;
@@ -27,7 +27,7 @@ fn json_string(s: &str) -> String {
 
 /// Xcode's version-1 API import report. Despite its name, sdkImports
 /// includes imports from non-SDK dylibs too, grouped by install name.
-pub fn write_sdk_imports<E: Arch>(ctx: &Context<E>) {
+pub fn write_sdk_imports<E: Target>(ctx: &Context<E>) {
     use crate::macho::{format_version, platform_name};
     let Some(path) = &ctx.args.sdk_imports else { return };
     let mut imports = std::collections::BTreeMap::<&str, Vec<&str>>::new();
@@ -69,7 +69,7 @@ pub fn write_sdk_imports<E: Arch>(ctx: &Context<E>) {
 /// format is binary: an opcode byte then a NUL-terminated string -
 /// 0x00 version, 0x10 input file, 0x11 file that was looked up but
 /// missing, 0x40 output file.
-pub fn write_dependency_info<E: Arch>(ctx: &Context<E>) {
+pub fn write_dependency_info<E: Target>(ctx: &Context<E>) {
     let Some(path) = &ctx.args.dependency_info else {
         return;
     };
@@ -98,7 +98,7 @@ pub fn write_dependency_info<E: Arch>(ctx: &Context<E>) {
     emit(0x40, &ctx.args.output);
 }
 
-pub fn print_map<E: Arch>(ctx: &Context<E>) {
+pub fn print_map<E: Target>(ctx: &Context<E>) {
     let Some(path) = &ctx.args.map else { return };
     let file = std::fs::File::create(path).unwrap_or_else(|e| fatal!("cannot open {path}: {e}"));
     let mut out = std::io::BufWriter::new(file);

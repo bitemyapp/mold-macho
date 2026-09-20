@@ -4,5 +4,5 @@
 /// Links for this target, or reports the target the inputs are actually
 /// for.
 pub fn link(cmdline: &[String]) -> Result<i32, String> {
-    mold_macho::driver::link::<mold_macho::arch::X86_64>(cmdline)
+    mold_macho::driver::link::<mold_macho::target::X86_64>(cmdline)
 }

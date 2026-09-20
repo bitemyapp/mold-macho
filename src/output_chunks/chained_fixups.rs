@@ -2,8 +2,6 @@
 //! replacement for the rebase and bind opcode streams, with the fixup
 //! chains it describes threaded through the data sections.
 
-use crate::arch::Arch;
-use crate::arch::RelocClass;
 use crate::context::Context;
 use crate::fatal;
 use crate::input_files::FileId;
@@ -11,6 +9,8 @@ use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
 use crate::passes::file_display;
 use crate::symbol::SymbolId;
+use crate::target::RelocClass;
+use crate::target::Target;
 
 #[derive(Debug)]
 pub struct ChainedFixupsSection {
@@ -38,7 +38,7 @@ impl ChainedFixupsSection {
     }
 }
 
-pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let data = &ctx.chained_fixups.contents;
     buf[..data.len()].copy_from_slice(data);
 }
@@ -58,7 +58,7 @@ pub type ChainedFixups = (
     std::collections::HashMap<crate::symbol::SymbolId, usize>,
 );
 
-pub fn build_chained_fixups<E: Arch>(ctx: &Context<E>) -> ChainedFixups {
+pub fn build_chained_fixups<E: Target>(ctx: &Context<E>) -> ChainedFixups {
     // An image with nothing to fix up still gets the payload (a
     // header and a starts table with no pages), as ld64 writes it:
     // dyld reads the format from the load command, and its absence
@@ -224,7 +224,7 @@ pub fn build_chained_fixups<E: Arch>(ctx: &Context<E>) -> ChainedFixups {
 /// Writes the fixup chains into the copied output: every fixup word is
 /// rewritten to encode its payload plus the 4-byte-stride distance to
 /// the next fixup in the same page.
-pub fn write_fixup_chains<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+pub fn write_fixup_chains<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let page_mask = !(E::PAGE_SIZE - 1);
 
     for seg in &ctx.segments {
@@ -288,7 +288,7 @@ pub fn write_fixup_chains<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
     }
 }
 
-pub fn collect_fixups<E: Arch>(
+pub fn collect_fixups<E: Target>(
     ctx: &Context<E>,
 ) -> Vec<(u64, Option<crate::symbol::SymbolId>, u64)> {
     use rayon::prelude::*;

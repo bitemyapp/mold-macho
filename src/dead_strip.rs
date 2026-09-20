@@ -8,17 +8,17 @@
 //! liveness walk's section-level counterpart, and mirrors
 //! gc_sections.rs in mold-rust (dead-strip.cc in sold).
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::input_sections::RelocTarget;
 use crate::macho::*;
+use crate::target::Target;
 
 /// Removes subsections that are not reachable from the roots: the entry
 /// point, exported symbols (for a dylib), and everything the format
 /// requires to stay (initializers, no-dead-strip sections and symbols).
 /// Reachability follows relocations and unwind-info edges.
-pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
+pub fn dead_strip<E: Target>(ctx: &mut Context<E>) {
     // For -why_live: who first marked each subsection (usize::MAX for
     // roots), giving a spanning tree of the liveness walk. Only kept
     // when it will be printed.
@@ -182,11 +182,11 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
         // code has deep call chains, which starve round-based marking;
         // dynamic tasks keep every core fed regardless of graph depth.
         const GC_BATCH: usize = 16;
-        struct Gc<'a, E: Arch> {
+        struct Gc<'a, E: Target> {
             ctx: &'a Context<E>,
             redirects: &'a [usize],
         }
-        fn visit_section<'s, E: Arch>(
+        fn visit_section<'s, E: Target>(
             gc: &'s Gc<'s, E>,
             id: usize,
             depth: usize,
@@ -237,7 +237,7 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
                 }
             }
         }
-        fn visit_batch<'s, E: Arch>(
+        fn visit_batch<'s, E: Target>(
             gc: &'s Gc<'s, E>,
             batch: Vec<usize>,
             scope: &rayon::Scope<'s>,
@@ -311,7 +311,7 @@ pub fn dead_strip<E: Arch>(ctx: &mut Context<E>) {
 
 /// Refresh symbol usage after atom liveness is known. Undefined references
 /// in removed atoms must neither cause errors nor become dynamic imports.
-pub fn mark_live_references<E: Arch>(ctx: &mut Context<E>) {
+pub fn mark_live_references<E: Target>(ctx: &mut Context<E>) {
     use rayon::prelude::*;
     ctx.symbols.syms.par_iter().for_each(|sym| sym.unmark());
     ctx.isecs
@@ -359,7 +359,7 @@ pub fn mark_live_references<E: Arch>(ctx: &mut Context<E>) {
 /// liveness walk's spanning tree read backwards, one "symbol from
 /// file" line per hop, ending at a dead-strip root. Only meaningful
 /// under -dead_strip, like ld64's option of the same name.
-fn print_why_live<E: Arch>(ctx: &Context<E>, pred: &[usize]) {
+fn print_why_live<E: Target>(ctx: &Context<E>, pred: &[usize]) {
     if ctx.args.why_live.is_empty() {
         return;
     }

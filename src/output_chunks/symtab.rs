@@ -1,11 +1,11 @@
 //! The symbol table, string table and indirect symbol table in
 //! __LINKEDIT.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
 use crate::symbol::SymbolId;
+use crate::target::Target;
 
 /// The symbol table, laid out before addresses are known. The symbol
 /// slot of each entry supplies its final `n_value` when the table is
@@ -76,7 +76,7 @@ impl IndirectSymtabSection {
 pub mod indirect_symtab {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         let mut off = 0;
         let lazy: &[SymbolId] = if ctx.lazy_binding() { &ctx.stubs.symbols } else { &[] };
         // A GOT slot holding a definition of this image that dyld never
@@ -102,7 +102,7 @@ pub mod indirect_symtab {
     }
 }
 
-pub fn copy_symtab<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+pub fn copy_symtab<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     use rayon::prelude::*;
     let off = ctx.symtab.hdr.fileoff as usize;
     let entries = &ctx.symtab.entries;

@@ -26,18 +26,18 @@
 //! second __TEXT placement (which re-encodes __unwind_info) cost 5% of
 //! the link. The extra entries are dead code in the thunk islands.
 
-use crate::arch::{Arch, RelocClass};
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::input_sections::InputSectionId;
 use crate::output_chunks::{self, OutputSectionId};
 use crate::symbol::SymbolId;
+use crate::target::{RelocClass, Target};
 use crate::util::align_to;
 
 /// Lays out the subsections of one big executable output section with
 /// range-extension thunks interleaved. Each subsection gets its
 /// output_offset; the thunks, with their symbols, are returned.
-pub fn create_range_extension_thunks<E: Arch>(
+pub fn create_range_extension_thunks<E: Target>(
     ctx: &mut Context<E>,
     isecs: &[InputSectionId],
 ) -> Vec<output_chunks::Thunk> {
@@ -136,7 +136,7 @@ pub fn create_range_extension_thunks<E: Arch>(
 
 /// Unmarks the symbols of every thunk that a branch at `from` can no
 /// longer reach, advancing the reachable-thunk cursor past them.
-fn release_out_of_reach<E: Arch>(
+fn release_out_of_reach<E: Target>(
     ctx: &Context<E>,
     thunks: &[output_chunks::Thunk],
     reachable_from: &mut usize,
@@ -157,7 +157,7 @@ fn release_out_of_reach<E: Arch>(
 /// gives it an entry in a new thunk at `thunk_off`. Returns the entry
 /// count. mold-rust scans each batch's members with par_iter and
 /// dedups with the symbol's atomic mark the same way.
-fn scan_batch<E: Arch>(
+fn scan_batch<E: Target>(
     ctx: &mut Context<E>,
     batch: &[InputSectionId],
     thunk_off: u64,
@@ -223,7 +223,7 @@ fn scan_batch<E: Arch>(
 /// thunk_addrs), in address order, so that applying an out-of-range
 /// branch can pick the entry within reach. mold-rust's
 /// gather_thunk_addresses.
-pub fn gather_thunk_addresses<E: Arch>(ctx: &mut Context<E>, osecs: &[OutputSectionId]) {
+pub fn gather_thunk_addresses<E: Target>(ctx: &mut Context<E>, osecs: &[OutputSectionId]) {
     // The sections are read while the symbol tables are written, so
     // the borrows are split and the addresses recorded as the thunks
     // are walked, without a temporary list (mold-rust 94e2104).
@@ -245,7 +245,7 @@ pub fn gather_thunk_addresses<E: Arch>(ctx: &mut Context<E>, osecs: &[OutputSect
 /// The address of a thunk entry for `sym` that a branch at `pc` can
 /// reach, if it has one.
 #[inline]
-pub fn reachable_thunk_addr<E: Arch>(ctx: &Context<E>, sym: SymbolId, pc: u64) -> Option<u64> {
+pub fn reachable_thunk_addr<E: Target>(ctx: &Context<E>, sym: SymbolId, pc: u64) -> Option<u64> {
     let range = (E::BRANCH_RANGE / 2) as i64;
     ctx.sym_aux(sym).thunk_addrs.iter().copied().find(|&t| {
         let d = t.wrapping_sub(pc) as i64;

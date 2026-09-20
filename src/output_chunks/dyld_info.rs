@@ -2,12 +2,12 @@
 //! bind and lazy bind. mold-rust's dynamic.rs holds the ELF dynamic
 //! relocation tables they stand in for.
 
-use crate::arch::{Arch, RelocClass};
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
 use crate::passes::{objc_ref_addr, DataField};
+use crate::target::{RelocClass, Target};
 use crate::util::write_uleb;
 
 /// The rebase opcode stream: every pointer dyld slides.
@@ -27,7 +27,7 @@ impl RebaseInfoSection {
 pub mod rebase_info {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         let data = &ctx.rebase_info.contents;
         buf[..data.len()].copy_from_slice(data);
     }
@@ -50,7 +50,7 @@ impl BindInfoSection {
 pub mod bind_info {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         let data = &ctx.bind_info.contents;
         buf[..data.len()].copy_from_slice(data);
     }
@@ -75,7 +75,7 @@ impl WeakBindInfoSection {
 pub mod weak_bind_info {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         let data = &ctx.weak_bind_info.contents;
         buf[..data.len()].copy_from_slice(data);
     }
@@ -105,7 +105,7 @@ impl LazyBindInfoSection {
 pub mod lazy_bind_info {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         let data = &ctx.lazy_bind_info.contents;
         buf[..data.len()].copy_from_slice(data);
     }
@@ -113,7 +113,7 @@ pub mod lazy_bind_info {
 
 /// Returns the load-command index of the segment containing `addr`, and
 /// the offset within it.
-fn segment_and_offset<E: Arch>(ctx: &Context<E>, addr: u64) -> (usize, u64) {
+fn segment_and_offset<E: Target>(ctx: &Context<E>, addr: u64) -> (usize, u64) {
     for (i, seg) in ctx.segments.iter().enumerate() {
         if seg.cmd.vmaddr <= addr
             && addr < seg.cmd.vmaddr + seg.cmd.vmsize
@@ -130,7 +130,7 @@ fn segment_and_offset<E: Arch>(ctx: &Context<E>, addr: u64) -> (usize, u64) {
 /// Every absolute address the linker writes into a data section gets a
 /// record. Runs during layout, once every segment before __LINKEDIT has
 /// an address.
-pub fn build_rebase_info<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+pub fn build_rebase_info<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let mut locs: Vec<u64> = Vec::new();
 
     // Pointers written for UNSIGNED relocations to local targets.
@@ -263,7 +263,7 @@ pub fn build_rebase_info<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
 /// (segment/offset of its lazy pointer, dylib ordinal, symbol, bind,
 /// done), and each record's offset, which the stub helper entry pushes
 /// for dyld_stub_binder. ld64's layout, byte for byte.
-pub fn build_lazy_bind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<u32>) {
+pub fn build_lazy_bind_info<E: Target>(ctx: &Context<E>) -> (Vec<u8>, Vec<u32>) {
     if !ctx.lazy_binding() || ctx.stubs.symbols.is_empty() {
         return (Vec::new(), Vec::new());
     }
@@ -304,7 +304,7 @@ pub fn build_lazy_bind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<u32>) {
     (buf, offsets)
 }
 
-pub fn build_bind_info<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+pub fn build_bind_info<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let mut binds: Vec<(u64, crate::symbol::SymbolId, i64)> = Vec::new();
 
     // GOT slots for imported symbols.
@@ -403,7 +403,7 @@ pub fn build_bind_info<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
 /// imported symbol's address), with the bind addends.
 /// The (address, target) of every non-null pointer field of the
 /// synthesized Objective-C records: each is a rebase.
-pub fn data_blob_pointers<E: Arch>(ctx: &Context<E>) -> Vec<(u64, u64)> {
+pub fn data_blob_pointers<E: Target>(ctx: &Context<E>) -> Vec<(u64, u64)> {
     let mut out = Vec::new();
     for b in &ctx.data_blobs {
         let mut at = ctx.isec_addr(b.isec as usize);
@@ -429,7 +429,7 @@ pub fn data_blob_pointers<E: Arch>(ctx: &Context<E>) -> Vec<(u64, u64)> {
 /// only if another image's copy of the symbol won coalescing (the
 /// slot's rebase already holds this image's copy). Sorted by symbol
 /// name, then address, as ld64 writes them.
-pub fn build_weak_bind_info<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+pub fn build_weak_bind_info<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     let mut binds: Vec<(crate::symbol::SymbolId, u64)> = Vec::new();
     {
         let got_addr = ctx.got.hdr.addr;

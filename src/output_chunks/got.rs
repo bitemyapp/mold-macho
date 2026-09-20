@@ -2,11 +2,11 @@
 //! __la_symbol_ptr, __got and __thread_ptrs. mold-rust's got.rs holds
 //! their ELF counterparts (.plt, .plt.got, .got.plt, .got).
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
 use crate::symbol::SymbolId;
+use crate::target::Target;
 
 /// __TEXT,__stubs: jump stubs for calls to imported functions.
 #[derive(Debug)]
@@ -28,7 +28,7 @@ impl StubsSection {
 pub mod stubs {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         E::write_stubs(ctx, ctx.stubs.hdr.addr, buf);
     }
 }
@@ -58,7 +58,7 @@ impl StubHelperSection {
 pub mod stub_helper {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         E::write_stub_helper(ctx, ctx.stub_helper.hdr.addr, buf);
     }
 }
@@ -82,7 +82,7 @@ impl LazyPtrsSection {
 pub mod lazy_ptrs {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         // Each lazy pointer starts at its stub helper entry.
         let helper = ctx.stub_helper.hdr.addr + E::STUB_HELPER_HEADER_SIZE;
         for i in 0..ctx.stubs.symbols.len() {
@@ -117,7 +117,7 @@ impl GotSection {
 pub mod got {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         // Slots for imported symbols stay zero; dyld fills them via
         // the bind stream.
         for (i, &id) in ctx.got.got_syms.iter().enumerate() {
@@ -149,7 +149,7 @@ impl ThreadPtrsSection {
 pub mod thread_ptrs {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         for (i, &id) in ctx.thread_ptrs.symbols.iter().enumerate() {
             if !ctx.symbols[id].is_imported() {
                 buf[i * 8..i * 8 + 8].copy_from_slice(&ctx.sym_addr(id).to_le_bytes());

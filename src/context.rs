@@ -3,7 +3,6 @@
 
 use std::marker::PhantomData;
 
-use crate::arch::Arch;
 use crate::cmdline::Args;
 use crate::error;
 use crate::input_files::{DylibFile, FileId, ObjectFile};
@@ -29,8 +28,9 @@ use crate::output_chunks::{
     ChunkHeader, ChunkId, OutputMachHeader, OutputSection, OutputSectionId, OutputSegment,
 };
 use crate::symbol::{SymbolId, SymbolTable};
+use crate::target::Target;
 
-pub struct Context<E: Arch> {
+pub struct Context<E: Target> {
     pub args: Args,
     pub objs: Vec<ObjectFile>,
     pub dylibs: Vec<DylibFile>,
@@ -126,7 +126,7 @@ pub struct Context<E: Arch> {
     _marker: PhantomData<E>,
 }
 
-impl<E: Arch> Context<E> {
+impl<E: Target> Context<E> {
     pub fn new(args: Args) -> Context<E> {
         Context {
             args,

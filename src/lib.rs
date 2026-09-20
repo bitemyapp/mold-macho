@@ -1,6 +1,5 @@
 //! A high-performance Mach-O linker.
 
-pub mod arch;
 pub mod archive_file;
 pub mod cmdline;
 pub mod context;
@@ -23,5 +22,6 @@ pub mod relocatable;
 pub mod subprocess;
 pub mod symbol;
 pub mod tapi;
+pub mod target;
 pub mod thunks;
 pub mod util;

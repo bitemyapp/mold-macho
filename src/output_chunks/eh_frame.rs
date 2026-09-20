@@ -1,9 +1,9 @@
 //! __TEXT,__eh_frame: the re-synthesized DWARF unwind records that
 //! compact unwind can't express.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::output_chunks::ChunkHeader;
+use crate::target::Target;
 
 #[derive(Debug)]
 pub struct EhFrameSection {
@@ -21,7 +21,7 @@ impl EhFrameSection {
 /// Writes the re-synthesized __eh_frame section: live CIEs with their
 /// personality cells rewritten to be GOT-relative, then live FDEs with
 /// their CIE pointer, function pointer and LSDA pointer re-targeted.
-pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     // `buf` is the chunk's own slice of the output.
     let base_off = 0;
     let base_addr = ctx.eh_frame.hdr.addr;

@@ -17,11 +17,11 @@
 
 use std::hash::Hash;
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::input_sections::RelocTarget;
 use crate::macho::*;
+use crate::target::Target;
 
 /// A stable identifier for what a relocation edge points at.
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
@@ -262,7 +262,7 @@ impl DigestMap {
     }
 }
 
-pub fn icf_sections<E: Arch>(ctx: &mut Context<E>) {
+pub fn icf_sections<E: Target>(ctx: &mut Context<E>) {
     use rayon::prelude::*;
 
     // Candidates: live, executable, and defined exclusively by weak

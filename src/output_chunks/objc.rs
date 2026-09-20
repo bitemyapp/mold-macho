@@ -2,12 +2,12 @@
 //! _objc_msgSend$<selector> stubs, the method lists rewritten in
 //! relative form, and the merged __objc_imageinfo record.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::macho::*;
 use crate::output_chunks::{ChunkHeader, OutputSectionId};
 use crate::passes::{ObjcMethList, ObjcRef};
 use crate::symbol::SymbolId;
+use crate::target::Target;
 
 /// __TEXT,__objc_stubs: linker-synthesized _objc_msgSend$<selector>
 /// stubs, with the selector strings and references they load (laid
@@ -67,7 +67,7 @@ impl ObjcStubsSection {
 pub mod objc_stubs {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         E::write_objc_stubs(ctx, ctx.objc_stubs.hdr.addr, buf);
     }
 }
@@ -92,7 +92,7 @@ impl ObjcMethlistSection {
 pub mod objc_methlist {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         let addr_of = |r: ObjcRef| -> u64 {
             match r {
                 ObjcRef::Isec(isec, off) => ctx.isec_addr(isec as usize) + off,
@@ -148,7 +148,7 @@ impl ObjcImageInfoSection {
 pub mod objc_imageinfo {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         buf[..4].copy_from_slice(&0u32.to_le_bytes());
         buf[4..8].copy_from_slice(&ctx.objc_imageinfo.flags.to_le_bytes());
     }

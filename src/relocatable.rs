@@ -16,7 +16,6 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::error;
 use crate::fatal;
@@ -25,6 +24,7 @@ use crate::input_sections::RelocTarget;
 use crate::macho::*;
 use crate::output_chunks::{ChunkId, OutputSectionId};
 use crate::output_file;
+use crate::target::Target;
 use crate::util::align_to;
 
 /// ld64's section order in a -r output, measured with ld-prime:
@@ -77,7 +77,7 @@ fn section_rank(segname: &str, sectname: &str, flags: u32) -> (u32, u32) {
     (seg, sect)
 }
 
-pub fn link<E: Arch>(ctx: &mut Context<E>) {
+pub fn link<E: Target>(ctx: &mut Context<E>) {
     // Lay out the merged sections from address zero, zero-fill
     // sections last: an object's file image mirrors its address
     // space (each section's file offset is the segment's plus its

@@ -1,6 +1,5 @@
 //! Input file parsing: object files, dylib stubs and archives.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::fatal;
 use crate::input_sections::InputSection;
@@ -8,6 +7,7 @@ use crate::macho::*;
 use crate::mapped_file::MappedFile;
 use crate::symbol::SymbolId;
 use crate::tapi;
+use crate::target::Target;
 
 /// A relocatable object file.
 /// A file a symbol is owned by: an object or a dylib, by index in
@@ -339,7 +339,7 @@ fn first_global_of(nlists: &[NList], dysym: Option<&DysymtabCommand>) -> Option<
     nlists[first..].iter().all(|nl| !is_local(nl)).then_some(first as u32)
 }
 
-pub fn stage_object<E: Arch>(
+pub fn stage_object<E: Target>(
     mf: &'static MappedFile,
     alive: bool,
     hidden: bool,
@@ -735,7 +735,7 @@ pub fn stage_object<E: Arch>(
 
 /// Appends a staged object to the global arenas, rebasing its local
 /// indices and interning its symbol names.
-pub fn integrate_object<E: Arch>(ctx: &mut Context<E>, staged: StagedObject) -> usize {
+pub fn integrate_object<E: Target>(ctx: &mut Context<E>, staged: StagedObject) -> usize {
     integrate_object_with(ctx, staged, None)
 }
 
@@ -747,7 +747,7 @@ pub fn integrate_object<E: Arch>(ctx: &mut Context<E>, staged: StagedObject) -> 
 /// indices - the actual work - runs on all cores, and the serial
 /// remainder is moving the rebased vectors into the global arenas.
 /// Produces exactly the layout the one-at-a-time path would.
-pub fn integrate_objects<E: Arch>(
+pub fn integrate_objects<E: Target>(
     ctx: &mut Context<E>,
     mut staged: Vec<StagedObject>,
     ids: Vec<crate::symbol::SymbolId>,
@@ -977,7 +977,7 @@ pub fn integrate_objects<E: Arch>(
     }
 }
 
-pub fn integrate_object_with<E: Arch>(
+pub fn integrate_object_with<E: Target>(
     ctx: &mut Context<E>,
     staged: StagedObject,
     pre_interned: Option<Vec<crate::symbol::SymbolId>>,
@@ -1072,14 +1072,18 @@ pub fn integrate_object_with<E: Arch>(
 }
 
 /// Parses one object and adds it to the link immediately.
-pub fn parse_object<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile, alive: bool) -> usize {
+pub fn parse_object<E: Target>(
+    ctx: &mut Context<E>,
+    mf: &'static MappedFile,
+    alive: bool,
+) -> usize {
     let priority = ctx.next_priority();
     let staged = stage_object::<E>(mf, alive, false, priority, ctx.args.relocatable);
     integrate_object(ctx, staged)
 }
 
 /// Loads the LTO plugin on first use.
-pub fn ensure_lto_plugin<E: Arch>(ctx: &mut Context<E>) -> crate::lto::Plugin {
+pub fn ensure_lto_plugin<E: Target>(ctx: &mut Context<E>) -> crate::lto::Plugin {
     if ctx.lto_plugin.is_none() {
         ctx.lto_plugin = Some(crate::lto::load_plugin(ctx.args.lto_library.as_deref()));
     }
@@ -1089,7 +1093,11 @@ pub fn ensure_lto_plugin<E: Arch>(ctx: &mut Context<E>) -> crate::lto::Plugin {
 /// Registers a bitcode input: a placeholder object that claims the
 /// module's symbols so resolution works, compiled for real by LTO once
 /// all inputs are known.
-pub fn parse_bitcode<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile, alive: bool) -> usize {
+pub fn parse_bitcode<E: Target>(
+    ctx: &mut Context<E>,
+    mf: &'static MappedFile,
+    alive: bool,
+) -> usize {
     let plugin = ensure_lto_plugin(ctx);
     let (module, lsyms) = crate::lto::parse_module(&plugin, mf.data, &mf.name);
 
@@ -1230,7 +1238,7 @@ impl UnwindRecord {
 /// section is an array of 32-byte entries whose pointer fields are set by
 /// relocations.
 #[allow(clippy::too_many_arguments)]
-fn parse_compact_unwind<E: Arch>(
+fn parse_compact_unwind<E: Target>(
     hdr: &MachSection,
     isecs: &[InputSection],
     subsecs: &[crate::input_sections::InputSectionId],
@@ -1414,7 +1422,7 @@ pub fn read_uleb_at(data: &[u8], pos: &mut usize) -> u64 {
 /// functions that have no compact unwind record, patching each CIE's
 /// personality cell to be GOT-relative, and dropping the rest.
 #[allow(clippy::too_many_arguments)]
-fn parse_eh_frame<E: Arch>(
+fn parse_eh_frame<E: Target>(
     hdr: &MachSection,
     isecs: &[InputSection],
     subsecs: &[crate::input_sections::InputSectionId],
@@ -1745,7 +1753,7 @@ pub fn defined_symbol_names(mf: &MappedFile) -> Vec<&'static str> {
 
 /// Returns the slice of a fat (universal) file matching the target's CPU
 /// type. Fat headers are big-endian.
-pub fn get_fat_slice<E: Arch>(mf: &'static MappedFile) -> &'static MappedFile {
+pub fn get_fat_slice<E: Target>(mf: &'static MappedFile) -> &'static MappedFile {
     let data = mf.data;
     let read_be32 = |off: usize| u32::from_be_bytes(data[off..off + 4].try_into().unwrap());
 
@@ -1793,7 +1801,7 @@ fn is_public_location(install_name: &str) -> bool {
 /// loading what it re-exports in turn; a private one's exports are
 /// merged into `exports`/`tlv_exports` as the re-exporting dylib's,
 /// and its own re-exports are walked the same way.
-fn load_reexports<E: Arch>(
+fn load_reexports<E: Target>(
     ctx: &mut Context<E>,
     reexports: Vec<(String, String, Vec<String>)>,
     parent: &str,
@@ -1880,7 +1888,7 @@ fn load_reexports<E: Arch>(
 
 /// Check binary dependencies, including private reexports whose symbols
 /// are merged into their parent's export set instead of a DylibFile.
-fn check_dylib_versions<E: Arch>(ctx: &Context<E>, mf: &MappedFile) {
+fn check_dylib_versions<E: Target>(ctx: &Context<E>, mf: &MappedFile) {
     let hdr = MachHeader::read_from(mf.data);
     let mut versions = Vec::new();
     let mut off = size_of::<MachHeader>();
@@ -1919,7 +1927,7 @@ fn check_dylib_versions<E: Arch>(ctx: &Context<E>, mf: &MappedFile) {
     }
 }
 
-pub fn parse_dylib_binary<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
+pub fn parse_dylib_binary<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
     check_dylib_versions(ctx, mf);
     let data = mf.data;
     let hdr = MachHeader::read_from(data);
@@ -2083,7 +2091,7 @@ fn thread_local_section_ordinals(data: &[u8], hdr: &MachHeader) -> Vec<u8> {
 
 /// The ordinal the next LC_LOAD_DYLIB will have: dylibs are numbered
 /// in load-command order, and a -bundle_loader has no load command.
-pub fn next_dylib_ordinal<E: Arch>(ctx: &Context<E>) -> i32 {
+pub fn next_dylib_ordinal<E: Target>(ctx: &Context<E>) -> i32 {
     ctx.dylibs.iter().filter(|d| !d.is_bundle_loader).count() as i32 + 1
 }
 
@@ -2180,7 +2188,7 @@ fn export_trie_entries(data: &[u8], off: usize, size: usize) -> Vec<(&'static st
 /// and without a load command of its own. Exports come from the symbol
 /// table's defined externals and the export trie (Xcode's test hosts
 /// are linked with -export_dynamic, and an executable may be stripped).
-pub fn parse_bundle_loader<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
+pub fn parse_bundle_loader<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
     let data = mf.data;
     let hdr = MachHeader::read_from(data);
     if hdr.magic != MH_MAGIC_64 || hdr.filetype != MH_EXECUTE {
@@ -2354,7 +2362,7 @@ fn dir_of(path: &str) -> String {
 /// names the dependency, @rpath tries that dylib's own LC_RPATH
 /// entries, and @executable_path stands for the output executable's
 /// directory (or -executable_path).
-fn resolve_dylib_ref<E: Arch>(
+fn resolve_dylib_ref<E: Target>(
     ctx: &Context<E>,
     name: &str,
     loader_dir: &str,
@@ -2384,7 +2392,7 @@ fn resolve_dylib_ref<E: Arch>(
 
 /// Locates the stub or binary for a reexported library's install name
 /// under the syslibroot.
-pub fn find_reexport_file<E: Arch>(
+pub fn find_reexport_file<E: Target>(
     ctx: &Context<E>,
     install_name: &str,
 ) -> Option<&'static MappedFile> {
@@ -2427,7 +2435,7 @@ pub fn find_reexport_file<E: Arch>(
 /// (the per-symbol form never worked in ld64 and is ignored, as sold
 /// found). Apple uses these when a symbol moves between libraries:
 /// old targets keep binding it where it used to live.
-fn interpret_ld_symbols<E: Arch>(ctx: &Context<E>, tbd: &mut tapi::TbdFile) {
+fn interpret_ld_symbols<E: Target>(ctx: &Context<E>, tbd: &mut tapi::TbdFile) {
     let minos = ctx.args.platform_minos;
     let mut added: Vec<&'static str> = Vec::new();
     let mut hidden: hashbrown::HashSet<&'static str> = hashbrown::HashSet::new();
@@ -2474,7 +2482,7 @@ fn interpret_ld_symbols<E: Arch>(ctx: &Context<E>, tbd: &mut tapi::TbdFile) {
     }
 }
 
-pub fn parse_dylib<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
+pub fn parse_dylib<E: Target>(ctx: &mut Context<E>, mf: &'static MappedFile) -> usize {
     let mut tbd = tapi::parse_cached(mf, E::NAME);
     interpret_ld_symbols(ctx, &mut tbd);
     let mut exports: hashbrown::HashSet<&'static str> = tbd.exports.into_iter().collect();
@@ -2522,7 +2530,7 @@ pub fn parse_dylib<E: Arch>(ctx: &mut Context<E>, mf: &'static MappedFile) -> us
 /// Registers a dylib, deduplicating by install name: several libraries
 /// (libc, libm, ...) are stubs for the same /usr/lib/libSystem.B.dylib,
 /// and dyld refuses an image that lists one install name twice.
-fn add_dylib<E: Arch>(ctx: &mut Context<E>, dylib: DylibFile) -> usize {
+fn add_dylib<E: Target>(ctx: &mut Context<E>, dylib: DylibFile) -> usize {
     // An app extension runs in a constrained sandbox; a dylib must opt
     // in (ld64's -application_extension sets MH_APP_EXTENSION_SAFE, or
     // a .tbd omits not_app_extension_safe) before extension code may

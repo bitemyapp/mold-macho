@@ -2,8 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::arch::Arch;
-use crate::arch::RelocClass;
 use crate::cmdline::InputArg;
 use crate::context::Context;
 use crate::error;
@@ -20,6 +18,8 @@ use crate::output_chunks::{
     self, mach_header_size, ChunkId, OutputSection, OutputSectionId, OutputSegment, Tail,
 };
 use crate::tapi;
+use crate::target::RelocClass;
+use crate::target::Target;
 use crate::util::align_to;
 
 /// Times a sub-phase to stderr when MOLD_TIMING is set - the
@@ -38,7 +38,7 @@ macro_rules! t {
 /// Returns the directories to search for `-l` libraries, in order. A
 /// library path that exists under a syslibroot is looked up there; the
 /// default search path is the syslibroot's /usr/lib.
-fn library_search_dirs<E: Arch>(ctx: &Context<E>) -> Vec<PathBuf> {
+fn library_search_dirs<E: Target>(ctx: &Context<E>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
     for dir in &ctx.args.library_paths {
@@ -69,7 +69,7 @@ fn library_search_dirs<E: Arch>(ctx: &Context<E>) -> Vec<PathBuf> {
 
 /// Returns the directories to search for `-framework`, in order,
 /// mirroring the library search rules.
-fn framework_search_dirs<E: Arch>(ctx: &Context<E>) -> Vec<PathBuf> {
+fn framework_search_dirs<E: Target>(ctx: &Context<E>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
     for dir in &ctx.args.framework_paths {
@@ -100,7 +100,7 @@ fn framework_search_dirs<E: Arch>(ctx: &Context<E>) -> Vec<PathBuf> {
     dirs
 }
 
-fn find_framework<E: Arch>(ctx: &Context<E>, name: &str) -> Option<PathBuf> {
+fn find_framework<E: Target>(ctx: &Context<E>, name: &str) -> Option<PathBuf> {
     for dir in framework_search_dirs(ctx) {
         let fw = dir.join(format!("{name}.framework"));
         for file in [format!("{name}.tbd"), name.to_string()] {
@@ -113,7 +113,7 @@ fn find_framework<E: Arch>(ctx: &Context<E>, name: &str) -> Option<PathBuf> {
     None
 }
 
-fn find_library<E: Arch>(ctx: &Context<E>, name: &str) -> Option<PathBuf> {
+fn find_library<E: Target>(ctx: &Context<E>, name: &str) -> Option<PathBuf> {
     // By default each directory is tried for a dylib and then an
     // archive before moving on (-search_paths_first, ld64's default
     // since Xcode 4). -search_dylibs_first restores the older ld64
@@ -151,7 +151,7 @@ struct PendingObject {
 /// archive members are queued for parallel staging; bitcode is
 /// registered immediately since libLTO calls are kept on one thread.
 #[allow(clippy::too_many_arguments)]
-fn collect_file<E: Arch>(
+fn collect_file<E: Target>(
     ctx: &mut Context<E>,
     mf: &'static MappedFile,
     force_load: bool,
@@ -239,7 +239,7 @@ fn collect_file<E: Arch>(
 
 /// Stages the queued object files in parallel and integrates them in
 /// input order - the parallel front end of the mold design.
-fn load_pending<E: Arch>(ctx: &mut Context<E>, pending: Vec<PendingObject>) {
+fn load_pending<E: Target>(ctx: &mut Context<E>, pending: Vec<PendingObject>) {
     use rayon::prelude::*;
     let relocatable = ctx.args.relocatable;
     let staged: Vec<input_files::StagedObject> = t!(
@@ -282,7 +282,7 @@ fn load_pending<E: Arch>(ctx: &mut Context<E>, pending: Vec<PendingObject>) {
     t!("integrate", input_files::integrate_objects(ctx, staged, ids, counts));
 }
 
-pub fn read_input_files<E: Arch>(ctx: &mut Context<E>) {
+pub fn read_input_files<E: Target>(ctx: &mut Context<E>) {
     // ld64 warns when a library is named twice; build systems that
     // knowingly repeat -l flags pass -no_warn_duplicate_libraries.
     if ctx.args.warn_duplicate_libraries {
@@ -465,7 +465,7 @@ pub enum Autolinked {
     Objects,
 }
 
-pub fn load_autolink_deps<E: Arch>(ctx: &mut Context<E>) -> Autolinked {
+pub fn load_autolink_deps<E: Target>(ctx: &mut Context<E>) -> Autolinked {
     // ld64 does not act on auto-link options in a -r link: the
     // LC_LINKER_OPTION commands are copied into the output object and
     // the final link resolves them. Loading them here would let the
@@ -537,7 +537,7 @@ pub fn load_autolink_deps<E: Arch>(ctx: &mut Context<E>) -> Autolinked {
 /// carry later priorities than every file already resolved, so they
 /// can steal nothing - a full re-resolution would reach exactly this
 /// outcome, at many times the cost.
-pub fn claim_new_dylibs<E: Arch>(ctx: &mut Context<E>, first: usize) {
+pub fn claim_new_dylibs<E: Target>(ctx: &mut Context<E>, first: usize) {
     use rayon::prelude::*;
     struct SymsPtr(*mut crate::symbol::Symbol);
     unsafe impl Sync for SymsPtr {}
@@ -576,12 +576,12 @@ pub fn claim_new_dylibs<E: Arch>(ctx: &mut Context<E>, first: usize) {
 /// object with no symbol table of its own, so no pass has to treat
 /// synthesized sections and symbols as fileless. mold-rust's
 /// create_internal_file.
-pub fn create_internal_file<E: Arch>(ctx: &mut Context<E>) {
+pub fn create_internal_file<E: Target>(ctx: &mut Context<E>) {
     ctx.internal_obj = Some(ctx.objs.len());
     ctx.objs.push(input_files::ObjectFile::internal());
 }
 
-pub fn resolve_symbols<E: Arch>(ctx: &mut Context<E>) {
+pub fn resolve_symbols<E: Target>(ctx: &mut Context<E>) {
     clear_claims(ctx);
     do_resolve(ctx, false);
     mark_live_objects(ctx);
@@ -593,7 +593,7 @@ pub fn resolve_symbols<E: Arch>(ctx: &mut Context<E>) {
 /// Non-external symbols are private to their object and never compete:
 /// each gets its definition directly. Relocations reference them by
 /// symbol index just like externals, so they need locations too.
-fn claim_locals<E: Arch>(ctx: &mut Context<E>) {
+fn claim_locals<E: Target>(ctx: &mut Context<E>) {
     use rayon::prelude::*;
     // A local symbol belongs to exactly one object (locals get fresh
     // slots, never interned), so the per-object claims write disjoint
@@ -635,7 +635,7 @@ fn claim_locals<E: Arch>(ctx: &mut Context<E>) {
     });
 }
 
-fn clear_claims<E: Arch>(ctx: &mut Context<E>) {
+fn clear_claims<E: Target>(ctx: &mut Context<E>) {
     use rayon::prelude::*;
     ctx.symbols.syms.par_iter_mut().for_each(|sym| {
         if matches!(sym.file(), Some(FileId::Obj(_)) | Some(FileId::Dylib(_))) || sym.is_common() {
@@ -652,7 +652,7 @@ fn clear_claims<E: Arch>(ctx: &mut Context<E>) {
     });
 }
 
-fn do_resolve<E: Arch>(ctx: &mut Context<E>, only_alive: bool) {
+fn do_resolve<E: Target>(ctx: &mut Context<E>, only_alive: bool) {
     use rayon::prelude::*;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -906,7 +906,7 @@ fn do_resolve<E: Arch>(ctx: &mut Context<E>, only_alive: bool) {
 
 /// Marks archive members whose definitions live code references,
 /// walking owner links to a fixed point.
-fn mark_live_objects<E: Arch>(ctx: &mut Context<E>) {
+fn mark_live_objects<E: Target>(ctx: &mut Context<E>) {
     // Resolution runs in rounds and recomputes liveness each time, so
     // the -why_load record starts over with it.
     ctx.why_load.clear();
@@ -949,7 +949,7 @@ fn mark_live_objects<E: Arch>(ctx: &mut Context<E>) {
 
 /// Compiles live bitcode modules into one Mach-O object and
 /// replaces the placeholder objects' symbol claims with the real ones.
-pub fn do_lto<E: Arch>(ctx: &mut Context<E>) -> bool {
+pub fn do_lto<E: Target>(ctx: &mut Context<E>) -> bool {
     if !ctx.lto_modules.iter().any(|&(obj, _)| ctx.objs[obj].is_alive) {
         return false;
     }
@@ -1065,7 +1065,7 @@ pub fn do_lto<E: Arch>(ctx: &mut Context<E>) -> bool {
 
 /// Converts surviving tentative definitions (common symbols) into real
 /// definitions in a synthetic __DATA,__common zero-fill section.
-pub fn convert_common_symbols<E: Arch>(ctx: &mut Context<E>) {
+pub fn convert_common_symbols<E: Target>(ctx: &mut Context<E>) {
     let internal = ctx.internal_obj.expect("internal object not created yet") as u32;
     for i in 0..ctx.symbols.syms.len() {
         let sym = &ctx.symbols[i];
@@ -1112,7 +1112,7 @@ pub fn convert_common_symbols<E: Arch>(ctx: &mut Context<E>) {
 /// (which each need a rebase) with 32-bit image-relative offsets in a
 /// __TEXT,__init_offsets section (type S_INIT_FUNC_OFFSETS), which
 /// dyld runs the same way but never has to fix up.
-pub fn convert_init_offsets<E: Arch>(ctx: &mut Context<E>) {
+pub fn convert_init_offsets<E: Target>(ctx: &mut Context<E>) {
     // ld64 turns this on implicitly with chained fixups: the point of
     // chains is a fixup-free __DATA_CONST, and absolute initializer
     // pointers would drag rebases back in.
@@ -1158,7 +1158,7 @@ pub fn convert_init_offsets<E: Arch>(ctx: &mut Context<E>) {
 
 /// Validates only objects selected by resolution, including the LTO
 /// output. Unused archive members must not cause errors or warnings.
-pub fn check_input_versions<E: Arch>(ctx: &Context<E>) {
+pub fn check_input_versions<E: Target>(ctx: &Context<E>) {
     for obj in ctx.objs.iter().filter(|obj| obj.is_alive) {
         // Old objects and the synthesized object may have no version
         // command. An object may also declare more than one platform;
@@ -1191,7 +1191,7 @@ pub fn check_input_versions<E: Arch>(ctx: &Context<E>) {
 
 /// Hides the subsections of archive members that resolution left
 /// dead, so nothing of theirs reaches the output.
-pub fn remove_unreachable_files<E: Arch>(ctx: &mut Context<E>) {
+pub fn remove_unreachable_files<E: Target>(ctx: &mut Context<E>) {
     for isec in ctx.isecs.iter_mut() {
         if !ctx.objs[isec.file as usize].is_alive {
             isec.set_alive(false);
@@ -1227,7 +1227,7 @@ pub fn remove_unreachable_files<E: Arch>(ctx: &mut Context<E>) {
 /// Rebuilds each subsection's compact-unwind record range after the
 /// records vector was compacted; the records stay grouped by
 /// subsection, so one walk over runs restores every range.
-pub fn refresh_unwind_ranges<E: Arch>(ctx: &mut Context<E>) {
+pub fn refresh_unwind_ranges<E: Target>(ctx: &mut Context<E>) {
     let mut i = 0;
     while i < ctx.unwind_records.len() {
         let isec = ctx.unwind_records[i].isec;
@@ -1242,7 +1242,7 @@ pub fn refresh_unwind_ranges<E: Arch>(ctx: &mut Context<E>) {
 
 /// Merges identical literal elements across all live inputs: the first
 /// live copy wins and the rest redirect to it.
-pub fn merge_literals<E: Arch>(ctx: &mut Context<E>) {
+pub fn merge_literals<E: Target>(ctx: &mut Context<E>) {
     use rayon::prelude::*;
 
     // Deduplication follows the symbol table's sharded shape: every
@@ -1311,7 +1311,7 @@ pub fn merge_literals<E: Arch>(ctx: &mut Context<E>) {
 /// chain. The copies are identical, so the symbol's offset is
 /// unchanged. (Section-relative relocations still resolve through the
 /// chain in isec_addr.)
-fn redirect_symbols_to_replacements<E: Arch>(ctx: &mut Context<E>) {
+fn redirect_symbols_to_replacements<E: Target>(ctx: &mut Context<E>) {
     use rayon::prelude::*;
     let isecs = &ctx.isecs;
     ctx.symbols.syms.par_iter_mut().for_each(|sym| {
@@ -1336,7 +1336,7 @@ fn redirect_symbols_to_replacements<E: Arch>(ctx: &mut Context<E>) {
 /// too many); the first copy wins and the rest redirect to it, like
 /// merged literals. A final link leaves class references to
 /// fold_objc_classrefs, which turns them into GOT slots.
-pub fn coalesce_objc_refs<E: Arch>(ctx: &mut Context<E>) {
+pub fn coalesce_objc_refs<E: Target>(ctx: &mut Context<E>) {
     // What a pointer relocation refers to: a place in a subsection
     // (where identical content has already been merged), or a symbol
     // defined elsewhere.
@@ -1447,7 +1447,7 @@ pub fn coalesce_objc_refs<E: Arch>(ctx: &mut Context<E>) {
 /// linker-provided symbols instead of setting up the selector argument
 /// itself; each stub loads the interned selector and tail-calls
 /// _objc_msgSend.
-pub fn create_objc_msgsend_stubs<E: Arch>(ctx: &mut Context<E>) {
+pub fn create_objc_msgsend_stubs<E: Target>(ctx: &mut Context<E>) {
     let internal = ctx.internal_obj.expect("internal object not created yet") as u32;
     for i in 0..ctx.symbols.syms.len() {
         let sym = &ctx.symbols[i];
@@ -1507,7 +1507,7 @@ pub fn create_objc_msgsend_stubs<E: Arch>(ctx: &mut Context<E>) {
 /// The scopes of coalesced copies merge: one plain .weak_definition
 /// among them pins the symbol exported, and an -exported_symbols_list
 /// naming it does too.
-pub fn auto_hide_weak_defs<E: Arch>(ctx: &mut Context<E>) {
+pub fn auto_hide_weak_defs<E: Target>(ctx: &mut Context<E>) {
     if ctx.args.relocatable {
         return;
     }
@@ -1560,7 +1560,7 @@ pub fn auto_hide_weak_defs<E: Arch>(ctx: &mut Context<E>) {
 
 /// Hide definitions before dead stripping and relocation scanning so
 /// they neither keep otherwise unused code alive nor bind as exports.
-pub fn hide_all_exports<E: Arch>(ctx: &mut Context<E>) {
+pub fn hide_all_exports<E: Target>(ctx: &mut Context<E>) {
     if !ctx.args.no_exported_symbols {
         return;
     }
@@ -1587,7 +1587,7 @@ pub fn hide_all_exports<E: Arch>(ctx: &mut Context<E>) {
 /// one object to the next, and ld64 discards the losers regardless)
 /// - C++ guarantees identical weak instantiations, but any other
 /// mismatch means something odd, and keeping the copy is safe.
-pub fn coalesce_weak_defs<E: Arch>(ctx: &mut Context<E>) {
+pub fn coalesce_weak_defs<E: Target>(ctx: &mut Context<E>) {
     // A C++ debug link has millions of weak-def nlists (every inline
     // and template instance), so the scan that finds each losing copy
     // - filtering, and a find_subsec binary search per weak def - runs
@@ -1696,7 +1696,7 @@ fn same_shape(
 /// yields quietly). Reported after resolution settles, sorted by name,
 /// so the messages are deterministic: mold-rust's
 /// check_duplicate_symbols.
-pub fn check_duplicate_symbols<E: Arch>(ctx: &Context<E>) {
+pub fn check_duplicate_symbols<E: Target>(ctx: &Context<E>) {
     use rayon::prelude::*;
     let mut duplicates: Vec<(crate::symbol::SymbolId, usize)> = ctx
         .objs
@@ -1738,7 +1738,7 @@ pub fn check_duplicate_symbols<E: Arch>(ctx: &Context<E>) {
     }
 }
 
-pub fn report_undef_errors<E: Arch>(ctx: &mut Context<E>) {
+pub fn report_undef_errors<E: Target>(ctx: &mut Context<E>) {
     // Errors name a file that wants the symbol; the map from symbol to
     // referencing object is built only once an error is certain.
     let mut referencers: Option<std::collections::HashMap<crate::symbol::SymbolId, usize>> = None;
@@ -1790,7 +1790,7 @@ pub fn report_undef_errors<E: Arch>(ctx: &mut Context<E>) {
 /// "referencer<TAB>provider<TAB>u<TAB>symbol". Xcode's newer ld
 /// grew this for build-graph auditing; it makes questions like "why
 /// is this archive member in my binary" one grep.
-pub fn print_dependencies<E: Arch>(ctx: &Context<E>) {
+pub fn print_dependencies<E: Target>(ctx: &Context<E>) {
     if !ctx.args.print_dependencies {
         return;
     }
@@ -1828,7 +1828,7 @@ pub fn print_dependencies<E: Arch>(ctx: &Context<E>) {
 /// is parsed eagerly, so rather than logging opens - which would list
 /// archive members the link then discards - the trace reports what
 /// actually took part.
-pub fn print_trace<E: Arch>(ctx: &Context<E>) {
+pub fn print_trace<E: Target>(ctx: &Context<E>) {
     if !ctx.args.trace {
         return;
     }
@@ -1846,7 +1846,7 @@ pub fn print_trace<E: Arch>(ctx: &Context<E>) {
 /// "_symbol forced load of archive.a(member.o)", in ld64's wording.
 /// Members loaded unconditionally (-all_load, -force_load) are
 /// reported with the option as the reason.
-pub fn print_why_load<E: Arch>(ctx: &Context<E>) {
+pub fn print_why_load<E: Target>(ctx: &Context<E>) {
     if !ctx.args.why_load {
         return;
     }
@@ -1872,7 +1872,7 @@ pub(crate) fn file_display(obj: &crate::input_files::ObjectFile) -> String {
 /// (-dead_strip_dylibs). Bind records name dylibs by their 1-based
 /// load-command ordinal, so surviving dylibs are renumbered and symbol
 /// origins remapped.
-pub fn dead_strip_dylibs<E: Arch>(ctx: &mut Context<E>) {
+pub fn dead_strip_dylibs<E: Target>(ctx: &mut Context<E>) {
     // A dylib built with -mark_dead_strippable_dylib asks every
     // linker to drop it when unused, so those are stripped even
     // without -dead_strip_dylibs; so is an auto-linked one, which
@@ -1946,7 +1946,7 @@ pub fn dead_strip_dylibs<E: Arch>(ctx: &mut Context<E>) {
 
 /// Decides which symbols need a stub or a GOT slot, from how relocations
 /// refer to them.
-pub fn scan_relocations<E: Arch>(ctx: &mut Context<E>) {
+pub fn scan_relocations<E: Target>(ctx: &mut Context<E>) {
     // Classification reads only; collect it on all cores. The apply
     // loop below stays serial so GOT and stub slots keep their
     // deterministic first-seen order.
@@ -2029,7 +2029,7 @@ pub fn scan_relocations<E: Arch>(ctx: &mut Context<E>) {
 /// True if the symbol resolves to a TLV descriptor: a definition in a
 /// S_THREAD_LOCAL_VARIABLES section, or a dylib export listed as
 /// thread-local. Symbols left to runtime lookup pass as either.
-pub fn is_thread_local_sym<E: Arch>(ctx: &Context<E>, id: crate::symbol::SymbolId) -> bool {
+pub fn is_thread_local_sym<E: Target>(ctx: &Context<E>, id: crate::symbol::SymbolId) -> bool {
     let sym = &ctx.symbols[id];
     match sym.file() {
         Some(FileId::Obj(_)) => sym.input_section().map(|i| i as usize).is_some_and(|isec| {
@@ -2043,7 +2043,7 @@ pub fn is_thread_local_sym<E: Arch>(ctx: &Context<E>, id: crate::symbol::SymbolI
 }
 
 /// The synthesized objc stubs call _objc_msgSend through the GOT.
-pub fn scan_objc_stubs<E: Arch>(ctx: &mut Context<E>) {
+pub fn scan_objc_stubs<E: Target>(ctx: &mut Context<E>) {
     if let Some(id) = ctx.objc_stubs.msgsend_sym {
         add_got(ctx, id);
     }
@@ -2093,7 +2093,7 @@ pub fn scan_objc_stubs<E: Arch>(ctx: &mut Context<E>) {
 
 /// Personality functions are referenced from __unwind_info through the
 /// GOT.
-pub fn scan_unwind_personalities<E: Arch>(ctx: &mut Context<E>) {
+pub fn scan_unwind_personalities<E: Target>(ctx: &mut Context<E>) {
     let mut personalities: Vec<_> =
         ctx.unwind_records.iter().filter_map(|rec| rec.personality()).collect();
     personalities.extend(ctx.fdes.iter().filter_map(|fde| ctx.cies[fde.cie as usize].personality));
@@ -2102,21 +2102,21 @@ pub fn scan_unwind_personalities<E: Arch>(ctx: &mut Context<E>) {
     }
 }
 
-fn add_thread_ptr<E: Arch>(ctx: &mut Context<E>, id: crate::symbol::SymbolId) {
+fn add_thread_ptr<E: Target>(ctx: &mut Context<E>, id: crate::symbol::SymbolId) {
     if ctx.sym_aux(id).tlv_idx == crate::symbol::NO_IDX {
         ctx.sym_aux_mut(id).tlv_idx = ctx.thread_ptrs.symbols.len() as u32;
         ctx.thread_ptrs.symbols.push(id);
     }
 }
 
-fn add_stub<E: Arch>(ctx: &mut Context<E>, id: crate::symbol::SymbolId) {
+fn add_stub<E: Target>(ctx: &mut Context<E>, id: crate::symbol::SymbolId) {
     if ctx.sym_aux(id).stub_idx == crate::symbol::NO_IDX {
         ctx.sym_aux_mut(id).stub_idx = ctx.stubs.symbols.len() as u32;
         ctx.stubs.symbols.push(id);
     }
 }
 
-fn add_got<E: Arch>(ctx: &mut Context<E>, id: crate::symbol::SymbolId) {
+fn add_got<E: Target>(ctx: &mut Context<E>, id: crate::symbol::SymbolId) {
     if ctx.sym_aux(id).got_idx == crate::symbol::NO_IDX {
         ctx.sym_aux_mut(id).got_idx = ctx.got.got_syms.len() as u32;
         ctx.got.got_syms.push(id);
@@ -2141,7 +2141,7 @@ fn add_got<E: Arch>(ctx: &mut Context<E>, id: crate::symbol::SymbolId) {
 /// A reference that cannot become a GOT load (the slot's address
 /// taken, or a pointer to it) keeps the slot: it is replaced by a
 /// synthetic subsection standing for the class's GOT entry.
-pub fn fold_objc_classrefs<E: Arch>(ctx: &mut Context<E>) {
+pub fn fold_objc_classrefs<E: Target>(ctx: &mut Context<E>) {
     if ctx.args.relocatable || !objc_refs_are_const(ctx) {
         return;
     }
@@ -2306,7 +2306,7 @@ pub struct ObjcMethList {
     pub methods: Vec<ObjcMethod>,
 }
 
-fn objc_relative_method_lists<E: Arch>(ctx: &Context<E>) -> bool {
+fn objc_relative_method_lists<E: Target>(ctx: &Context<E>) -> bool {
     ctx.args.objc_relative_method_lists.unwrap_or_else(|| {
         ctx.args.platform == crate::macho::PLATFORM_MACOS
             && ctx.args.platform_minos >= crate::macho::encode_version(11, 0, 0)
@@ -2316,7 +2316,7 @@ fn objc_relative_method_lists<E: Arch>(ctx: &Context<E>) -> bool {
 /// A class's ro data: class_t.data at offset 32, whose low two bits a
 /// Swift class uses as flags (FAST_IS_SWIFT_STABLE), so the record
 /// itself sits at the pointer with those bits cleared.
-fn objc_class_ro<E: Arch>(ctx: &Context<E>, cls: (u32, u64)) -> Option<(u32, u64)> {
+fn objc_class_ro<E: Target>(ctx: &Context<E>, cls: (u32, u64)) -> Option<(u32, u64)> {
     let (isec, off) =
         objc_pointer_at(ctx, cls.0, cls.1 + 32).and_then(|r| objc_ref_location(ctx, r))?;
     Some((isec, off & !3))
@@ -2324,7 +2324,7 @@ fn objc_class_ro<E: Arch>(ctx: &Context<E>, cls: (u32, u64)) -> Option<(u32, u64
 
 /// The relocation of the pointer field at `off` in a subsection, as
 /// (object, index into its relocation arena), for rewriting it.
-fn objc_pointer_reloc<E: Arch>(ctx: &Context<E>, isec: u32, off: u64) -> Option<(usize, usize)> {
+fn objc_pointer_reloc<E: Target>(ctx: &Context<E>, isec: u32, off: u64) -> Option<(usize, usize)> {
     let sec = &ctx.isecs[isec as usize];
     if ctx.is_internal(sec.file as usize) {
         return None;
@@ -2338,7 +2338,7 @@ fn objc_pointer_reloc<E: Arch>(ctx: &Context<E>, isec: u32, off: u64) -> Option<
 
 /// The pointer stored at `off` in a subsection: the target of the
 /// 8-byte relocation there, if any.
-fn objc_pointer_at<E: Arch>(ctx: &Context<E>, isec: u32, off: u64) -> Option<ObjcRef> {
+fn objc_pointer_at<E: Target>(ctx: &Context<E>, isec: u32, off: u64) -> Option<ObjcRef> {
     let sec = &ctx.isecs[isec];
     if ctx.is_internal(sec.file as usize) {
         return None;
@@ -2360,7 +2360,7 @@ fn objc_pointer_at<E: Arch>(ctx: &Context<E>, isec: u32, off: u64) -> Option<Obj
 
 /// A reference's location as (live subsection, offset), for data
 /// defined in this link; None for an import or an absolute.
-fn objc_ref_location<E: Arch>(ctx: &Context<E>, r: ObjcRef) -> Option<(u32, u64)> {
+fn objc_ref_location<E: Target>(ctx: &Context<E>, r: ObjcRef) -> Option<(u32, u64)> {
     let (isec, off) = match r {
         ObjcRef::Isec(isec, off) => (isec, off),
         ObjcRef::Sym(id, addend) => {
@@ -2393,7 +2393,7 @@ fn objc_ref_location<E: Arch>(ctx: &Context<E>, r: ObjcRef) -> Option<(u32, u64)
 /// one synthesized in the __objc_selrefs tail. A list is left alone
 /// when it is not the whole of its subsection or not in the classic
 /// 24-byte form.
-pub fn convert_objc_method_lists<E: Arch>(ctx: &mut Context<E>) {
+pub fn convert_objc_method_lists<E: Target>(ctx: &mut Context<E>) {
     if ctx.args.relocatable || !objc_relative_method_lists(ctx) {
         return;
     }
@@ -2428,7 +2428,7 @@ pub fn convert_objc_method_lists<E: Arch>(ctx: &mut Context<E>) {
             }
         }
     };
-    fn visit_class<E: Arch>(
+    fn visit_class<E: Target>(
         ctx: &Context<E>,
         cls: (u32, u64),
         classes_seen: &mut hashbrown::HashSet<(u32, u64)>,
@@ -2639,7 +2639,7 @@ impl DataBlob {
 }
 
 /// The address a synthesized record's reference resolves to.
-pub fn objc_ref_addr<E: Arch>(ctx: &Context<E>, r: ObjcRef) -> u64 {
+pub fn objc_ref_addr<E: Target>(ctx: &Context<E>, r: ObjcRef) -> u64 {
     match r {
         ObjcRef::Isec(isec, off) => ctx.isec_addr(isec as usize) + off,
         ObjcRef::Sym(id, addend) => (ctx.sym_addr(id) as i64 + addend) as u64,
@@ -2648,7 +2648,7 @@ pub fn objc_ref_addr<E: Arch>(ctx: &Context<E>, r: ObjcRef) -> u64 {
     }
 }
 
-fn objc_cstring_at<E: Arch>(ctx: &Context<E>, r: Option<ObjcRef>) -> Option<String> {
+fn objc_cstring_at<E: Target>(ctx: &Context<E>, r: Option<ObjcRef>) -> Option<String> {
     let (isec, off) = objc_ref_location(ctx, r?)?;
     let data = ctx.isecs[isec as usize].data();
     let bytes = data.get(off as usize..)?;
@@ -2670,7 +2670,7 @@ fn objc_cstring_at<E: Arch>(ctx: &Context<E>, r: Option<ObjcRef>) -> Option<Stri
 /// in the expected shape, is left alone. Runs after the method lists
 /// have been rewritten in relative form, when it merges those; with
 /// classic lists the merged list is a classic one.
-pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
+pub fn merge_objc_categories<E: Target>(ctx: &mut Context<E>) {
     if ctx.args.relocatable || !ctx.args.objc_category_merging.unwrap_or(true) {
         return;
     }
@@ -3363,7 +3363,7 @@ pub fn merge_objc_categories<E: Arch>(ctx: &mut Context<E>) {
 }
 
 /// Publishes selected imports without reexporting their whole dylib.
-pub fn create_symbol_reexports<E: Arch>(ctx: &mut Context<E>) {
+pub fn create_symbol_reexports<E: Target>(ctx: &mut Context<E>) {
     if ctx.args.reexported_symbols.is_empty() {
         return;
     }
@@ -3405,7 +3405,7 @@ pub fn create_symbol_reexports<E: Arch>(ctx: &mut Context<E>) {
 }
 
 /// Defines the symbols the linker itself provides.
-pub fn add_synthetic_symbols<E: Arch>(ctx: &mut Context<E>) {
+pub fn add_synthetic_symbols<E: Target>(ctx: &mut Context<E>) {
     let internal = ctx.internal_obj.expect("internal object not created yet") as u32;
     if ctx.args.output_type == MH_EXECUTE {
         let id = ctx.symbols.intern("__mh_execute_header");
@@ -3507,7 +3507,7 @@ pub fn add_synthetic_symbols<E: Arch>(ctx: &mut Context<E>) {
 
 /// Fills in the boundary symbols' addresses once every chunk and
 /// segment has one.
-pub fn fix_synthetic_symbols<E: Arch>(ctx: &mut Context<E>) {
+pub fn fix_synthetic_symbols<E: Target>(ctx: &mut Context<E>) {
     for i in 0..ctx.boundary_syms.len() {
         let (id, is_start, seg, sect) = ctx.boundary_syms[i].clone();
         let value = match &sect {
@@ -3597,7 +3597,7 @@ fn output_section_rank(segname: &str, sectname: &str) -> u32 {
 
 /// The segment for read-only-after-fixup data: __DATA_CONST unless
 /// -no_data_const.
-fn data_seg<E: Arch>(ctx: &Context<E>) -> &'static str {
+fn data_seg<E: Target>(ctx: &Context<E>) -> &'static str {
     if ctx.args.data_const {
         "__DATA_CONST"
     } else {
@@ -3633,7 +3633,7 @@ const DATA_CONST_SECTIONS: &[&str] = &[
 /// runtime on older systems, so they stay in __DATA - with their input
 /// flags - unless the deployment target is macOS 15 or later, where
 /// ld64 moves them to __DATA_CONST (dyld fixes them up there).
-fn objc_refs_are_const<E: Arch>(ctx: &Context<E>) -> bool {
+fn objc_refs_are_const<E: Target>(ctx: &Context<E>) -> bool {
     ctx.args.platform == crate::macho::PLATFORM_MACOS
         && ctx.args.platform_minos >= crate::macho::encode_version(15, 0, 0)
 }
@@ -3740,7 +3740,7 @@ fn output_section_flags(segname: &str, sectname: &str, input: u32, relocatable: 
 
 /// Creates output section chunks and appends each input section to its
 /// chunk, and groups chunks into segments.
-pub fn create_output_sections<E: Arch>(ctx: &mut Context<E>) {
+pub fn create_output_sections<E: Target>(ctx: &mut Context<E>) {
     ctx.chunks.push(ChunkId::MachHeader);
 
     // Assign each input section to an output section, creating output
@@ -4324,7 +4324,7 @@ pub fn create_output_sections<E: Arch>(ctx: &mut Context<E>) {
 }
 
 /// Adds a synthesized section with fixed contents to the output.
-fn add_sectcreate<E: Arch>(ctx: &mut Context<E>, sec: SectCreateSection) {
+fn add_sectcreate<E: Target>(ctx: &mut Context<E>, sec: SectCreateSection) {
     let idx = ctx.sectcreate_sections.len() as u32;
     ctx.sectcreate_sections.push(sec);
     ctx.chunks.push(ChunkId::SectCreate(idx));
@@ -4344,7 +4344,7 @@ fn keep_local_symbol(name: &str) -> bool {
 /// _objc_classes_* in __objc_classlist: ld-prime's NetNewsWire has
 /// none of the 127 ours carried). A demoted private external in those
 /// sections stays (clang's __OBJC_LABEL_PROTOCOL_$_X does).
-fn keep_local_symbol_in<E: Arch>(ctx: &Context<E>, name: &str, isec: Option<u32>) -> bool {
+fn keep_local_symbol_in<E: Target>(ctx: &Context<E>, name: &str, isec: Option<u32>) -> bool {
     if !keep_local_symbol(name) {
         return false;
     }
@@ -4381,7 +4381,7 @@ fn keep_local_symbol_in<E: Arch>(ctx: &Context<E>, name: &str, isec: Option<u32>
 /// notes) has it copied through, the address-bearing entries rebased
 /// to their subsections' output addresses and those of dead
 /// subsections dropped. Shared by the final link and -r.
-pub fn plan_object_stabs<E: Arch>(
+pub fn plan_object_stabs<E: Target>(
     ctx: &Context<E>,
     obj_idx: usize,
     cwd: &str,
@@ -4568,7 +4568,7 @@ pub fn plan_object_stabs<E: Arch>(
 /// then defined globals and undefined symbols, each sorted by name.
 /// Symbol values are filled in when the table is copied out, after
 /// addresses are assigned.
-pub fn create_output_symtab<E: Arch>(
+pub fn create_output_symtab<E: Target>(
     ctx: &Context<E>,
     sorted_globals: &[crate::symbol::SymbolId],
 ) -> SymtabSection {
@@ -5035,7 +5035,7 @@ pub fn create_output_symtab<E: Arch>(
     data
 }
 
-pub fn set_osec_offsets<E: Arch>(ctx: &mut Context<E>) {
+pub fn set_osec_offsets<E: Target>(ctx: &mut Context<E>) {
     let page = E::PAGE_SIZE;
     let mut addr = 0;
     let mut fileoff = 0;
@@ -5323,7 +5323,7 @@ pub fn set_osec_offsets<E: Arch>(ctx: &mut Context<E>) {
 /// [arch:][object:]symbol per line with #-comments; the qualifiers
 /// narrow a match, which this implementation approximates by
 /// matching the bare symbol name.
-fn order_file_ranks<E: Arch>(ctx: &Context<E>) -> Option<Vec<u64>> {
+fn order_file_ranks<E: Target>(ctx: &Context<E>) -> Option<Vec<u64>> {
     if ctx.args.order_files.is_empty() {
         return None;
     }
@@ -5387,7 +5387,7 @@ fn order_file_ranks<E: Arch>(ctx: &Context<E>) -> Option<Vec<u64>> {
 }
 
 /// Resolves the entry point symbol.
-pub fn resolve_entry<E: Arch>(ctx: &mut Context<E>) {
+pub fn resolve_entry<E: Target>(ctx: &mut Context<E>) {
     if ctx.args.output_type != MH_EXECUTE {
         return;
     }
@@ -5406,7 +5406,7 @@ pub fn resolve_entry<E: Arch>(ctx: &mut Context<E>) {
 /// Gives an entry point that resolved to a dylib export the stub that
 /// LC_MAIN will name; runs after scan_relocations, with the stubs of
 /// the branch targets.
-pub fn add_entry_stub<E: Arch>(ctx: &mut Context<E>) {
+pub fn add_entry_stub<E: Target>(ctx: &mut Context<E>) {
     if ctx.args.output_type != MH_EXECUTE {
         return;
     }
@@ -5427,7 +5427,7 @@ pub fn add_entry_stub<E: Arch>(ctx: &mut Context<E>) {
 /// loaded dylib exports it, given a GOT slot, and __dyld_private (the
 /// word dyld_stub_binder is handed, ld64 puts it in __DATA,__data) is
 /// synthesized. Once, on the first stub.
-fn ensure_stub_binder<E: Arch>(ctx: &mut Context<E>) {
+fn ensure_stub_binder<E: Target>(ctx: &mut Context<E>) {
     if ctx.stub_helper.dyld_stub_binder.is_some() {
         return;
     }
@@ -5493,7 +5493,7 @@ fn ensure_stub_binder<E: Arch>(ctx: &mut Context<E>) {
 /// produced: everything between the header and the symbol table after
 /// the copy and its fix-ups, the symbol and string tables after
 /// copy_symtab, the header after the UUID, the signature last.
-pub fn copy_chunks<E: Arch>(
+pub fn copy_chunks<E: Target>(
     ctx: &Context<E>,
     buf: &mut [u8],
     out: &crate::output_file::OutputFile,

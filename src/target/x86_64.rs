@@ -1,10 +1,10 @@
 //! The x86-64 target.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::fatal;
 use crate::input_sections::{Reloc, RelocTarget};
 use crate::macho::*;
+use crate::target::Target;
 
 #[derive(Clone, Copy, Default)]
 pub struct X86_64;
@@ -29,7 +29,7 @@ fn reloc_bias(r_type: u8) -> i64 {
     }
 }
 
-impl Arch for X86_64 {
+impl Target for X86_64 {
     const NAME: &'static str = "x86_64";
     const CPUTYPE: u32 = CPU_TYPE_X86_64;
     const CPUSUBTYPE: u32 = CPU_SUBTYPE_X86_64_ALL;
@@ -72,8 +72,8 @@ impl Arch for X86_64 {
         offset >= 2 && data.get(offset as usize - 2) == Some(&0x8b)
     }
 
-    fn classify_reloc(r_type: u8) -> crate::arch::RelocClass {
-        use crate::arch::RelocClass;
+    fn classify_reloc(r_type: u8) -> crate::target::RelocClass {
+        use crate::target::RelocClass;
         match r_type {
             X86_64_RELOC_BRANCH => RelocClass::Branch,
             X86_64_RELOC_GOT_LOAD => RelocClass::GotLoad,

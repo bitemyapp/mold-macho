@@ -2,11 +2,11 @@
 //! and the LC_FUNCTION_STARTS, LC_DATA_IN_CODE and LC_CODE_SIGNATURE
 //! tables in __LINKEDIT.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::input_files::FileId;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
+use crate::target::Target;
 use crate::util::{align_to, write_uleb};
 
 /// A section created from a file by -sectcreate, or an empty one for
@@ -32,7 +32,7 @@ impl SectCreateSection {
 pub mod sectcreate {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, idx: u32, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, idx: u32, buf: &mut [u8]) {
         let data = ctx.sectcreate_sections[idx as usize].contents;
         buf[..data.len()].copy_from_slice(data);
     }
@@ -60,7 +60,7 @@ impl InitOffsetsSection {
 pub mod init_offsets {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         for (i, &(isec, off)) in ctx.init_offsets.init_funcs.iter().enumerate() {
             let val = (ctx.isec_addr(isec) + off - ctx.args.pagezero_size) as u32;
             buf[i * 4..i * 4 + 4].copy_from_slice(&val.to_le_bytes());
@@ -86,7 +86,7 @@ impl FunctionStartsSection {
 pub mod function_starts {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         let data = &ctx.function_starts.contents;
         buf[..data.len()].copy_from_slice(data);
     }
@@ -112,7 +112,7 @@ impl DataInCodeSection {
 pub mod data_in_code {
     use super::*;
 
-    pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+    pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
         let mut p = 0;
         for &(off, len, kind) in &ctx.data_in_code.entries {
             buf[p..p + 4].copy_from_slice(&off.to_le_bytes());
@@ -194,7 +194,7 @@ pub fn rehash_pages(data: &[u8], hashes: &mut [[u8; SHA256_SIZE]], range: std::o
 /// run an executable without one. The signature we create is just SHA256
 /// hashes of every page, marked ad-hoc and linker-signed; no signing
 /// identity is involved.
-pub fn write_code_signature<E: Arch>(
+pub fn write_code_signature<E: Target>(
     ctx: &Context<E>,
     buf: &mut [u8],
     hashes: &[[u8; SHA256_SIZE]],
@@ -264,7 +264,7 @@ pub fn write_code_signature<E: Arch>(
 /// __LINKEDIT: the __text file offsets the entries record are final by
 /// then, so the table is built exactly once (sold builds its contents
 /// in compute_size the same way) and copied out verbatim.
-pub fn build_data_in_code<E: Arch>(ctx: &Context<E>) -> Vec<(u32, u16, u16)> {
+pub fn build_data_in_code<E: Target>(ctx: &Context<E>) -> Vec<(u32, u16, u16)> {
     let mut out: Vec<(u32, u16, u16)> = Vec::new();
     for obj in &ctx.objs {
         if !obj.is_alive {
@@ -289,7 +289,7 @@ pub fn build_data_in_code<E: Arch>(ctx: &Context<E>) -> Vec<(u32, u16, u16)> {
     out
 }
 
-pub fn build_function_starts<E: Arch>(ctx: &Context<E>) -> Vec<u8> {
+pub fn build_function_starts<E: Target>(ctx: &Context<E>) -> Vec<u8> {
     if !ctx.args.function_starts {
         return Vec::new();
     }

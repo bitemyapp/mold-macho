@@ -1,8 +1,10 @@
-//! Target architecture abstraction.
+//! Target descriptions.
 //!
-//! The linker is generic over [`Arch`], which selects a CPU type and the
-//! target-dependent relocation handling. Each target is instantiated in a
-//! crate of its own under arch/.
+//! Every target is a zero-sized marker type implementing [`Target`], which
+//! selects a CPU type and carries the constants and code that differ
+//! between targets: the stub and thunk shapes, and the target-dependent
+//! relocation handling. The rest of the linker is generic over it. Each
+//! target is instantiated in a crate of its own under arch/.
 
 mod arm64;
 mod x86_64;
@@ -30,7 +32,7 @@ pub enum RelocClass {
     Plain,
 }
 
-pub trait Arch: Copy + Default + Send + Sync + 'static {
+pub trait Target: Copy + Default + Send + Sync + 'static {
     const NAME: &'static str;
     const CPUTYPE: u32;
     const CPUSUBTYPE: u32;

@@ -1,11 +1,11 @@
 //! __TEXT,__unwind_info: the compact unwind table, generated from the
 //! objects' __compact_unwind records.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::macho::*;
 use crate::output_chunks::ChunkHeader;
 use crate::symbol::SymbolId;
+use crate::target::Target;
 
 #[derive(Debug)]
 pub struct UnwindInfoSection {
@@ -25,7 +25,7 @@ impl UnwindInfoSection {
     }
 }
 
-pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
+pub fn copy_buf<E: Target>(ctx: &Context<E>, buf: &mut [u8]) {
     let sec = &ctx.unwind_info;
     debug_assert_eq!(sec.contents.len() as u64, sec.hdr.size);
     buf[..sec.contents.len()].copy_from_slice(&sec.contents);
@@ -56,7 +56,7 @@ pub fn copy_buf<E: Arch>(ctx: &Context<E>, buf: &mut [u8]) {
 /// patch list instead of written, and the copy phase fills the cells
 /// at offsets 28, 32, ... once the GOT has its address. Everything
 /// else in the encoding is final at sizing time.
-pub fn encode_unwind_info<E: Arch>(ctx: &Context<E>) -> (Vec<u8>, Vec<SymbolId>) {
+pub fn encode_unwind_info<E: Target>(ctx: &Context<E>) -> (Vec<u8>, Vec<SymbolId>) {
     use rayon::prelude::*;
     let mut records: Vec<crate::input_files::UnwindRecord> = ctx
         .unwind_records

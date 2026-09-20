@@ -2,12 +2,12 @@
 //! subsections assigned to it, the range-extension thunks placed among
 //! them, and the linker-synthesized tail after them.
 
-use crate::arch::Arch;
 use crate::context::Context;
 use crate::input_sections::InputSectionId;
 use crate::output_chunks::{ChunkHeader, ChunkId, OutputSectionId};
 use crate::passes::{objc_ref_addr, DataField};
 use crate::symbol::SymbolId;
+use crate::target::Target;
 
 /// A range-extension thunk: a block of jump entries placed inside an
 /// output section so that branches whose targets are further than the
@@ -64,7 +64,7 @@ impl OutputSection {
     }
 }
 
-pub fn copy_buf<E: Arch>(ctx: &Context<E>, id: OutputSectionId, buf: &mut [u8]) {
+pub fn copy_buf<E: Target>(ctx: &Context<E>, id: OutputSectionId, buf: &mut [u8]) {
     let osec = ctx.output_section(id);
     for thunk in &osec.thunks {
         let off = thunk.offset as usize;
