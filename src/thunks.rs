@@ -168,8 +168,7 @@ fn scan_batch<E: Target>(
     let ctx_ref: &Context<E> = ctx;
     let mut syms: Vec<SymbolId> = batch
         .par_iter()
-        .flat_map_iter(|&isec_id| {
-            let mut out = Vec::new();
+        .fold(Vec::new, |mut syms, &isec_id| {
             let obj = ctx_ref.isecs[isec_id].file as usize;
             let osec = ctx_ref.isecs[isec_id].output_section();
             let ro = ctx_ref.isecs[isec_id].rel_offset as usize;
@@ -202,12 +201,15 @@ fn scan_batch<E: Target>(
                     }
                 }
                 if sym.mark() {
-                    out.push(sym_id);
+                    syms.push(sym_id);
                 }
             }
-            out
+            syms
         })
-        .collect();
+        .reduce(Vec::new, |mut syms, mut other| {
+            syms.append(&mut other);
+            syms
+        });
     if syms.is_empty() {
         return 0;
     }
